@@ -1,0 +1,107 @@
+---
+title: "02_dimensionality_reduction"
+format: html
+---
+
+# Load packages
+
+```{r}
+library(tidyverse)
+library(HDAnalyzeR)
+library(patchwork)
+library(ComplexUpset)
+library(UpSetR)
+library(org.Hs.eg.db)
+library(ggridges)
+```
+
+```{r}
+source("../scripts/functions/functions_disease_analyses.R")
+source("../scripts/functions/nice_plots.R")
+source("../scripts/functions/run_de_analysis.R")
+```
+
+```{r}
+select <- dplyr::select
+filter <- dplyr::filter
+```
+
+## Load data
+
+```{r}
+metadata <- read_csv("../data/metadata.csv")
+data_long <- read_csv("../data/data_long.csv")
+data_wide <- read_csv("../data/data_wide.csv")
+```
+
+# PCA
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subcategory, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+End of file.
