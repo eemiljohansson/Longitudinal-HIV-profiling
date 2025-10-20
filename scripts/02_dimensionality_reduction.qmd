@@ -13,6 +13,8 @@ library(ComplexUpset)
 library(UpSetR)
 library(org.Hs.eg.db)
 library(ggridges)
+library(ggfortify)
+library(ggConvexHull)
 ```
 
 ```{r}
@@ -26,6 +28,24 @@ select <- dplyr::select
 filter <- dplyr::filter
 ```
 
+```{r}
+theme_lordjord93_so <- function(){
+  theme_minimal() %+replace%
+    theme(axis.title.y = element_text(size = 18, family = "sans"),
+          legend.position = "bottom",
+          legend.text = element_text(size = 18, family = "sans"),
+          axis.text.x = element_text(colour ="black", size = 16, family = "sans"),
+          axis.text.y = element_text(colour ="black", size = 16, family = "sans"),
+          axis.title.x = element_text(colour = "black", size = 18, family = "sans"),
+          legend.title = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_blank(),
+          plot.title = element_text(size = 10, hjust = 0.5),
+          legend.key = element_rect(fill = "white", colour = "white")
+    )
+}
+```
+
 ## Load data
 
 ```{r}
@@ -34,7 +54,11 @@ data_long <- read_csv("../data/data_long.csv")
 data_wide <- read_csv("../data/data_wide.csv")
 ```
 
-# PCA
+# Dimensionality reduction
+
+## Subcategories
+
+### PCA
 
 ```{r}
 input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
@@ -67,15 +91,278 @@ pca_df$pca_res |>
   scale_color_brewer(palette = "Set1")
 ```
 
+```{r}
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subcategory, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+ # geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2) +
+  geom_hline(yintercept=0, linetype="dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept=0, linetype="dashed", colour= "black", size = 0.8) +
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  scale_fill_manual(values = c(`More preserved immunity` = "#64629A", 
+                               `Severely impaired immunity` = "#CC5E5E", 
+                               `Elite Controller` = "#529F96", 
+                               `Primary HIV Infection` = "#DCAA1F")) +
+  scale_colour_manual(values =  c(`More preserved immunity` = "#64629A", 
+                                  `Severely impaired immunity` = "#CC5E5E", 
+                                  `Elite Controller` = "#529F96", 
+                                  `Primary HIV Infection` = "#DCAA1F")) +
+  theme_lordjord93_so()
+```
 
 
+### UMAP
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
+```
+
+```{r}
+umap_df <- hd_umap(
+  dat = input_df,
+  by_sample = TRUE,
+  impute = TRUE,
+  components = 2,
+  seed = 123
+)
+```
+
+```{r}
+umap_df$umap_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = Subcategory, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  labs(
+    title = "UMAP of HIV samples",
+    x = "UMAP1",
+    y = "UMAP2"
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+## Treatment
+
+### PCA
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
+```
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  geom_hline(yintercept=0, linetype="dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept=0, linetype="dashed", colour= "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+### UMAP
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
+```
+
+```{r}
+umap_df <- hd_umap(
+  dat = input_df,
+  by_sample = TRUE,
+  impute = TRUE,
+  components = 2,
+  seed = 123
+)
+```
+
+```{r}
+umap_df$umap_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = Treatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  # Add 
+  labs(
+    title = "UMAP of HIV samples",
+    x = "UMAP1",
+    y = "UMAP2"
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+## Comparing 3 treatments
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Treatment %in% c("INSTI + Abacavir", "INSTI + Tenofovir", "NNRTI + Tenofovir")))$DAid)
+```
+
+### PCA
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(TimeTreatment = paste(Timepoint, Treatment, sep = " - ")) |>
+  ggplot(aes(x = PC1, y = PC2, color = TimeTreatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment by Timepoint",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1")
+
+```
+
+### UMAP
+
+```{r}
+umap_df <- hd_umap(
+  dat = input_df,
+  by_sample = TRUE,
+  impute = TRUE,
+  components = 2,
+  seed = 123
+)
+```
+
+```{r}
+umap_df$umap_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(TimeTreatment = paste(Timepoint, Treatment, sep = " - ")) |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = TimeTreatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  labs(
+    title = "UMAP of HIV treatment by Timepoint",
+    x = "UMAP1",
+    y = "UMAP2"
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1")
+```
 
 
+## INSTI + Tenofovir vs. NNRTI + Tenofovir
 
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Treatment %in% c("INSTI + Tenofovir", "NNRTI + Tenofovir")))$DAid)
+```
 
+### PCA
 
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
 
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
 
+```{r}
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(TimeTreatment = paste(Timepoint, Treatment, sep = " - ")) |>
+  ggplot(aes(x = PC1, y = PC2, color = TimeTreatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of INSTI + Tenofovir vs. NNRTI + Tenofovir by Timepoint",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1")
+```
+
+### UMAP
+
+```{r}
+umap_df <- hd_umap(
+  dat = input_df,
+  by_sample = TRUE,
+  impute = TRUE,
+  components = 2,
+  seed = 123
+)
+```
+
+```{r}
+umap_df$umap_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(TimeTreatment = paste(Timepoint, Treatment, sep = " - ")) |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = TimeTreatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  labs(
+    title = "UMAP of INSTI + Tenofovir vs. NNRTI + Tenofovir by Timepoint",
+    x = "UMAP1",
+    y = "UMAP2"
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1")
+```
 
 
 
