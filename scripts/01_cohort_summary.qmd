@@ -1,0 +1,857 @@
+---
+title: "Figure 1 - Comparing HIV to healthy"
+format: html
+---
+
+# Load packages
+
+```{r}
+library(tidyverse)
+library(patchwork)
+library(ggridges)
+library(ggalluvial)
+library(forcats)
+```
+
+```{r}
+select <- dplyr::select
+filter <- dplyr::filter
+```
+
+## Load data
+
+```{r}
+metadata <- read_csv("../data/metadata.csv")
+```
+
+```{r}
+source("../scripts/functions/themes_palettes.R")
+```
+
+## Sanity checks
+
+```{r}
+metadata |>
+  group_by(Subcategory) |>
+  count()
+
+metadata |>
+  filter(Disease == "HIV")
+```
+
+# Cohort summary
+
+## Density
+
+### Age
+
+```{r}
+df_both <- metadata %>%
+  filter(Disease == "HIV", Timepoint %in% c("Baseline", "Follow-up")) %>%
+  mutate(
+    Age_use = dplyr::case_when(
+      Timepoint == "Baseline"  ~ `Age (baseline)`,
+      Timepoint == "Follow-up" ~ `Age (follow-up)`,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(Age_use), !is.na(Subcategory)) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    Subcategory = fct_reorder(Subcategory, Age_use, .fun = median, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+density_age <- ggplot(df_both, aes(x = Age_use, y = Subcategory, fill = Timepoint)) +
+  geom_density_ridges(
+    alpha = 0.5,
+    scale = 1.2,
+    rel_min_height = 0.01,
+    color = "grey20",
+    size = 0.3,
+    quantile_lines = TRUE, 
+    quantiles = 0.5,
+    vline_linetype = "solid",
+    vline_color   = "black",
+    vline_size    = 0.4
+  ) +
+  labs(
+    x = "Age (years)",
+    y = "Subcategory",
+    title = "Age density per Subcategory (HIV, Baseline vs Follow-up)",
+    subtitle = "Fill color = timepoint; vertical line = median"
+  ) +
+  scale_fill_manual(values = c("Baseline" = "#1f78b4", "Follow-up" = "#33a02c")) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.minor = element_blank()) +
+  theme_hiv()
+
+density_age
+
+ggsave("../plots/pdf/density/age_density_ridges_baseline_followup.pdf", width = 14, height = 7)
+ggsave("../plots/png/density/age_density_ridges_baseline_followup.pdf", width = 14, height = 7)
+```
+
+## Sankey plot
+
+Creating a Sankey plot starting with group by subcategory, then going to CD4/CD8, then ART, then backbone 2, then CD4/CD8 again at follow-up.
+
+```{r}
+# -----------------------------
+# Define categorical levels
+# -----------------------------
+cd4cd8_levels <- c("Normal", "Low", "Very Low")
+subcategory_levels <- c("Elite Controller", "More preserved immunity",
+                        "Severely impaired immunity", "Primary HIV Infection")
+art_levels <- c("Untreated", "Other", "INSTI", "NNRTI")
+backbone_levels <- c("Untreated", "Other", "Abacavir", "Tenofovir")
+
+# -----------------------------
+# Define color palettes
+# -----------------------------
+stratum_colors <- c(
+  # Subcategory
+  "Elite Controller" = "#1b9e77",
+  "More preserved immunity" = "#d95f02",
+  "Severely impaired immunity" = "#7570b3",
+  "Primary HIV Infection" = "#e7298a",
+  # CD4/CD8 status
+  "Normal" = "#66c2a5",
+  "Low" = "#fc8d62",
+  "Very Low" = "#8da0cb",
+  # ART
+  "INSTI" = "#e78ac3",
+  "NNRTI" = "#a6d854",
+  "Other" = "#ffd92f",
+  "Untreated" = "#e5c494",
+  # Backbone
+  "Abacavir" = "#b3b3b3",
+  "Tenofovir" = "#80b1d3"
+)
+
+# -----------------------------
+# Prepare data
+# -----------------------------
+plot_data <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    # --- ART grouping ---
+    ART_grouped = case_when(
+      Subcategory == "Elite Controller" ~ "Untreated",
+      ART == "INSTI" ~ "INSTI",
+      ART == "NNRTI" ~ "NNRTI",
+      TRUE ~ "Other"  # everyone else is Other
+    ),
+
+    # --- Backbone grouping ---
+    Backbone_grouped = case_when(
+      Subcategory == "Elite Controller" ~ "Untreated",
+      str_detect(tolower(`Backbone 2`), "abacavir") ~ "Abacavir",
+      str_detect(tolower(`Backbone 2`), "tenofovir") ~ "Tenofovir",
+      TRUE ~ "Other"  # all non-EC or unrecognized backbones = Other
+    )
+  ) %>%
+  group_by(
+    ID, Subcategory,
+    `CD4/CD8 status (baseline)`, ART_grouped,
+    Backbone_grouped, `CD4/CD8 status (follow-up)`
+  ) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(
+    Subcategory = factor(Subcategory, levels = subcategory_levels),
+    ART_grouped = factor(ART_grouped, levels = art_levels),
+    Backbone_grouped = factor(Backbone_grouped, levels = backbone_levels),
+    `CD4/CD8 status (baseline)` = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels),
+    `CD4/CD8 status (follow-up)` = factor(`CD4/CD8 status (follow-up)`, levels = cd4cd8_levels)
+  )
+
+# -----------------------------
+# Sankey / Alluvial plot
+# -----------------------------
+sankey_plot <- ggplot(
+  plot_data,
+  aes(axis1 = Subcategory,
+      axis2 = `CD4/CD8 status (baseline)`,
+      axis3 = ART_grouped,
+      axis4 = Backbone_grouped,
+      axis5 = `CD4/CD8 status (follow-up)`,
+      y = n)
+) +
+  geom_alluvium(aes(fill = Subcategory), width = 1/12, alpha = 0.7) +
+  geom_stratum(aes(fill = after_stat(stratum)), width = 1/12) +
+  geom_label(
+    stat = "stratum",
+    aes(label = paste0(after_stat(stratum), "\n(n=", after_stat(count), ")")),
+    size = 3,
+    lineheight = 0.9,
+    fill = "black",
+    color = "white",
+    label.size = NA
+  ) +
+  scale_fill_manual(values = stratum_colors, name = "Group") +
+  scale_x_discrete(
+    limits = c("Subcategory", "CD4/CD8 status (baseline)",
+               "ART", "Backbone", "CD4/CD8 status (follow-up)"),
+    expand = c(0.05, 0.05)
+  ) +
+  labs(
+    title = "Sankey flow of HIV subcategories, CD4/CD8 status, ART, and backbones",
+    subtitle = "Only Elite Controllers are untreated; all others grouped as INSTI, NNRTI, or Other",
+    y = "Number of individuals"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold")
+  ) +
+  # remove legend
+  theme(legend.position = "none")
+
+sankey_plot
+
+ggsave("../plots/pdf/sankey/sankey_plot.pdf", width = 18, height = 8)
+ggsave("../plots/png/sankey/sankey_plot.png", width = 18, height = 8)
+```
+
+# Bar chart
+
+## Sex
+
+```{r}
+# Summarize counts per Subcategory × Sex
+sex_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(Sex)) %>%
+  count(Subcategory, Sex) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  ) %>%
+  ungroup()
+
+# Stacked barplot: Subcategory on x, counts on y, fill by Sex
+bar_sex <- ggplot(sex_summary, aes(x = Subcategory, y = n, fill = Sex)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 5) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "Sex distribution per Subcategory",
+    x     = "Subcategory",
+    fill  = "Sex"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_flip() +
+  theme_hiv()
+
+bar_sex
+
+ggsave("../plots/pdf/bar/stacked_bar_sex_per_subcategory.pdf", width  = 10,height = 7)
+ggsave("../plots/png/bar/stacked_bar_sex_per_subcategory.png", width  = 10,height = 7)
+```
+
+## Improvements
+
+```{r}
+# 1. Define category levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Classify each individual's change in CD4/CD8 status
+cd4cd8_class <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  select(Subcategory, ID,
+         baseline = `CD4/CD8 status (baseline)`,
+         followup = `CD4/CD8 status (follow-up)`) %>%
+  filter(!is.na(baseline) & !is.na(followup)) %>%
+  mutate(
+    baseline = factor(baseline, levels = cd4cd8_levels),
+    followup = factor(followup, levels = cd4cd8_levels),
+    change   = case_when(
+      as.numeric(followup) > as.numeric(baseline) ~ "Improved",
+      as.numeric(followup) < as.numeric(baseline) ~ "Worsened",
+      TRUE                                        ~ "Similar"
+    )
+  )
+
+# 3. Summarize counts and percents per subcategory
+cd4cd8_summary <- cd4cd8_class %>%
+  count(Subcategory, change) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 4. Stacked barplot: Subcategory on x, counts on y, fill by change
+bar_improvements <- ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = change)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 5) +
+  scale_fill_manual(
+    values = c("Improved" = "#1b9e77",
+               "Similar"  = "grey80",
+               "Worsened" = "#d95f02")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "CD4/CD8 Category Change (Baseline → Follow-up)",
+    x     = "Subcategory",
+    fill  = "Change"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top",
+  ) +
+  coord_flip() +
+  theme_hiv()
+
+bar_improvements
+
+ggsave("../plots/pdf/bar/barplot_cd4cd8_change.pdf", width = 10, height = 7)
+ggsave("../plots/png/bar/barplot_cd4cd8_change.png", width = 10, height = 7)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 category levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize baseline CD4/CD8 status per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (baseline)`)) %>%
+  mutate(status = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels)) %>%
+  count(Subcategory, status) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(status, "\n", n, " (", percent, "%)")
+  )
+
+# 3. Plot pie charts per subcategory
+ggplot(cd4cd8_summary, aes(x = factor(1), y = n, fill = status)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Subcategory, scales = "free") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.5) +
+  scale_fill_manual(values = c("Very Low" = "#d95f02", "Low" = "grey80", "Normal" = "#1b9e77")) +
+  theme_void(base_size = 14) +
+  theme(
+    strip.text = element_text(size = 12),
+    aspect.ratio = 1  # Ensures round pies
+  ) +
+  labs(
+    title = "CD4/CD8 Status at Baseline by Subcategory",
+    fill = "CD4/CD8 Status"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/pie_chart_cd4cd8_baseline.pdf", width = 10, height = 7)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 category levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize baseline CD4/CD8 status per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (baseline)`)) %>%
+  mutate(status = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels)) %>%
+  count(Subcategory, status) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 3. Stacked barplot: Subcategory on x, counts on y, fill by status
+ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 3) +
+  scale_fill_manual(
+    values = c("Very Low" = "#d95f02",
+               "Low"      = "grey80",
+               "Normal"   = "#1b9e77")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "Baseline CD4/CD8 Status by Subcategory",
+    x     = "Subcategory",
+    fill  = "CD4/CD8 Status"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/stacked_bar_cd4cd8_baseline.pdf", width  = 7, height = 10)
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 category levels
+cd4cd8_levels <- c("Untreated", "INSTI", "NNRTI")
+
+# 2. Summarize baseline CD4/CD8 status per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  # If NA, consider as "Untreated"
+  mutate(ART = ifelse(is.na(ART), "Untreated", ART)) %>%
+  mutate(status = factor(ART, levels = cd4cd8_levels)) %>%
+  count(Subcategory, status) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(status, "\n", n, " (", percent, "%)")
+  )
+
+# 3. Plot pie charts per subcategory
+ggplot(cd4cd8_summary, aes(x = factor(1), y = n, fill = status)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Subcategory, scales = "free") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.5) +
+  scale_fill_manual(values = c("INSTI" = "#E78AC3", "Untreated" = "#E5C494", "NNRTI" = "#A6D854")) +
+  theme_void(base_size = 14) +
+  theme(
+    strip.text = element_text(size = 12),
+    aspect.ratio = 1  # Ensures round pies
+  ) +
+  labs(
+    title = "ART Status by Subcategory",
+    fill = "ART status"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/pie_chart_ART.pdf", width = 10, height = 7)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define ART category levels
+art_levels <- c("Untreated", "INSTI", "NNRTI")
+
+# 2. Summarize ART status per subcategory
+art_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  # If ART is NA, label as "Untreated"
+  mutate(ART = ifelse(is.na(ART), "Untreated", ART)) %>%
+  mutate(status = factor(ART, levels = art_levels)) %>%
+  count(Subcategory, status) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 3. Stacked barplot: Subcategory on x, counts on y, fill by ART status
+ggplot(art_summary, aes(x = Subcategory, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 3) +
+  scale_fill_manual(
+    values = c("INSTI"     = "#E78AC3",
+               "Untreated" = "#E5C494",
+               "NNRTI"     = "#A6D854")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "ART Status by Subcategory",
+    x     = "Subcategory",
+    fill  = "ART status"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/stacked_bar_ART_status.pdf", width  = 7, height = 10)
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define backbone levels (optional ordering — adjust as needed)
+backbone_levels <- c("Tenofovir", "Abacavir", "Other")
+
+# 2. Summarize Backbone 2 by subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    `Backbone 2` = case_when(
+      is.na(`Backbone 2`) ~ "Other",
+      TRUE ~ `Backbone 2`
+    ),
+    backbone_group = factor(`Backbone 2`, levels = backbone_levels)
+  ) %>%
+  count(Subcategory, backbone_group) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(backbone_group, "\n", n, " (", percent, "%)")
+  )
+
+# 3. Plot pie charts per subcategory
+ggplot(cd4cd8_summary, aes(x = factor(1), y = n, fill = backbone_group)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Subcategory, scales = "free") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.5) +
+  scale_fill_manual(values = c("Tenofovir" = "#80B1D3", "Abacavir" = "#FDB462", "Other" = "#B3B3B3")) +
+  theme_void(base_size = 14) +
+  theme(
+    strip.text = element_text(size = 12),
+    aspect.ratio = 1  # Ensures round pies
+  ) +
+  labs(
+    title = "Backbone 2 by Subcategory",
+    fill = "Backbone"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/pie_chart_backbone2.pdf", width = 10, height = 7)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define backbone levels (optional ordering)
+backbone_levels <- c("Tenofovir", "Abacavir", "Other")
+
+# 2. Summarize Backbone 2 by subcategory
+backbone_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    `Backbone 2` = ifelse(is.na(`Backbone 2`), "Other", `Backbone 2`),
+    backbone_group = factor(`Backbone 2`, levels = backbone_levels)
+  ) %>%
+  count(Subcategory, backbone_group) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 3. Stacked barplot: Subcategory on x, counts on y, fill by backbone_group
+ggplot(backbone_summary, aes(x = Subcategory, y = n, fill = backbone_group)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 3) +
+  scale_fill_manual(
+    values = c("Tenofovir" = "#80B1D3",
+               "Abacavir"   = "#FDB462",
+               "Other"      = "#B3B3B3")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "Backbone 2 by Subcategory",
+    x     = "Subcategory",
+    fill  = "Backbone"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/stacked_bar_backbone2.pdf", width  = 7, height = 10)
+
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 status levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize CD4/CD8 status at follow-up per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (follow-up)`)) %>%
+  mutate(
+    cd4cd8_followup = factor(`CD4/CD8 status (follow-up)`, levels = cd4cd8_levels)
+  ) %>%
+  count(Subcategory, cd4cd8_followup) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(cd4cd8_followup, "\n", n, " (", percent, "%)")
+  )
+
+# 3. Plot pie charts per subcategory
+ggplot(cd4cd8_summary, aes(x = factor(1), y = n, fill = cd4cd8_followup)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Subcategory, scales = "free") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.5) +
+  scale_fill_manual(values = c("Very Low" = "#d95f02", "Low" = "grey80", "Normal" = "#1b9e77")) +
+  theme_void(base_size = 14) +
+  theme(
+    strip.text = element_text(size = 12),
+    aspect.ratio = 1  # Ensures round pies
+  ) +
+  labs(
+    title = "CD4/CD8 Status at Follow-up by Subcategory",
+    fill = "CD4/CD8 Status"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/pie_chart_cd4cd8_followup.pdf", width = 10, height = 7)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 status levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize CD4/CD8 status at follow-up per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (follow-up)`)) %>%
+  mutate(
+    cd4cd8_followup = factor(`CD4/CD8 status (follow-up)`, levels = cd4cd8_levels)
+  ) %>%
+  count(Subcategory, cd4cd8_followup) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 3. Stacked barplot: Subcategory on x, counts on y, fill by follow-up status
+ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = cd4cd8_followup)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 3) +
+  scale_fill_manual(
+    values = c("Very Low" = "#d95f02",
+               "Low"      = "grey80",
+               "Normal"   = "#1b9e77")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "CD4/CD8 Status at Follow-up by Subcategory",
+    x     = "Subcategory",
+    fill  = "CD4/CD8 Status"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/stacked_bar_cd4cd8_followup.pdf", width  = 7, height = 10)
+
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 status levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize CD4/CD8 status at baseline per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (baseline)`)) %>%
+  mutate(
+    cd4cd8_baseline = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels)
+  ) %>%
+  count(Subcategory, cd4cd8_baseline) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(cd4cd8_baseline, "\n", n, " (", percent, "%)")
+  )
+
+# 3. Plot pie charts per subcategory
+ggplot(cd4cd8_summary, aes(x = factor(1), y = n, fill = cd4cd8_baseline)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  facet_wrap(~ Subcategory, scales = "free") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.5) +
+  scale_fill_manual(values = c("Very Low" = "#d95f02", "Low" = "grey80", "Normal" = "#1b9e77")) +
+  theme_void(base_size = 14) +
+  theme(
+    strip.text = element_text(size = 12),
+    aspect.ratio = 1  # Ensures round pies
+  ) +
+  labs(
+    title = "CD4/CD8 Status at Baseline by Subcategory",
+    fill = "CD4/CD8 Status"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/pie_chart_cd4cd8_baseline.pdf", width = 10, height = 7)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define CD4/CD8 status levels
+cd4cd8_levels <- c("Very Low", "Low", "Normal")
+
+# 2. Summarize CD4/CD8 status at baseline per subcategory
+cd4cd8_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (baseline)`)) %>%
+  mutate(
+    cd4cd8_baseline = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels)
+  ) %>%
+  count(Subcategory, cd4cd8_baseline) %>%
+  group_by(Subcategory) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 3. Stacked barplot: Subcategory on x, counts on y, fill by baseline status
+ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = cd4cd8_baseline)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 3) +
+  scale_fill_manual(
+    values = c("Very Low" = "#d95f02",
+               "Low"      = "grey80",
+               "Normal"   = "#1b9e77")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Count of individuals") +
+  labs(
+    title = "CD4/CD8 Status at Baseline by Subcategory",
+    x     = "Subcategory",
+    fill  = "CD4/CD8 Status"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+
+# 4. Save plot
+#ggsave("results/figures/figure 1/stacked_bar_cd4cd8_baseline.pdf", width  = 7,  height = 10)
+
+```
+
+# Combine plots
+
+```{r}
+density_age + bar_sex + bar_improvements
+```
+
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
