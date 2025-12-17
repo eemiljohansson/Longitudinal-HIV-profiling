@@ -84,7 +84,8 @@ density_age <- ggplot(df_both, aes(x = Age_use, y = Subcategory, fill = Timepoin
   scale_fill_manual(values = c("Baseline" = "#1f78b4", "Follow-up" = "#33a02c")) +
   theme_minimal(base_size = 13) +
   theme(panel.grid.minor = element_blank()) +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 density_age
 
@@ -248,7 +249,8 @@ bar_sex <- ggplot(sex_summary, aes(x = Subcategory, y = n, fill = Sex)) +
     legend.position = "top"
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 bar_sex
 
@@ -314,7 +316,8 @@ bar_improvements <- ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = ch
     legend.position = "top",
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 bar_improvements
 
@@ -361,7 +364,8 @@ ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = status)) +
     legend.position = "top"
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 ggsave("../plots/pdf/bar/stacked_bar_cd4cd8_baseline.pdf", width  = 10, height = 7)
 ggsave("../plots/png/bar/stacked_bar_cd4cd8_baseline.png", width  = 10, height = 7)
@@ -408,7 +412,8 @@ ggplot(cd4cd8_summary, aes(x = Subcategory, y = n, fill = cd4cd8_followup)) +
     legend.position = "top"
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 ggsave("../plots/pdf/bar/stacked_bar_cd4cd8_followup.pdf", width  = 10, height = 7)
 ggsave("../plots/png/bar/stacked_bar_cd4cd8_followup.png", width  = 10, height = 7)
@@ -460,7 +465,8 @@ ggplot(art_summary, aes(x = Subcategory, y = n, fill = status)) +
     legend.position = "top"
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 ggsave("../plots/pdf/bar/stacked_bar_ART_status.pdf", width  = 10, height = 7)
 ggsave("../plots/png/bar/stacked_bar_ART_status.png", width  = 10, height = 7)
@@ -518,7 +524,8 @@ ggplot(backbone_summary, aes(x = Subcategory, y = n, fill = backbone_group)) +
     legend.position = "top"
   ) +
   coord_flip() +
-  theme_hiv()
+  theme_hiv()  +
+  theme(legend.position = "top")
 
 ggsave("../plots/pdf/bar/stacked_bar_backbone2.pdf", width  = 10, height = 7)
 ggsave("../plots/png/bar/stacked_bar_backbone2.png", width  = 10, height = 7)
@@ -597,7 +604,8 @@ ggplot(treatment_summary, aes(y = Treatment, x = n, fill = Subcategory)) +
     axis.text.y = element_text(size = 12),
     legend.position = "top"
   ) +
-  theme_hiv()
+  theme_hiv() +
+  theme(legend.position = "top")
 
 # 4. Save outputs
 ggsave("../plots/pdf/bar/stacked_bar_treatment_combinations.pdf", width = 10, height = 7)
