@@ -3,7 +3,6 @@ title: "02_dimensionality_reduction"
 format: html
 ---
 
-
 # Load packages
 
 ```{r}
@@ -15,6 +14,14 @@ library(UpSetR)
 library(org.Hs.eg.db)
 library(ggridges)
 ```
+
+```{r}
+ggplot2::update_geom_defaults(
+  "point",
+  list(size = 2.5, alpha = 0.6)
+)
+```
+
 
 ```{r}
 source("../scripts/functions/functions_disease_analyses.R")
@@ -78,8 +85,7 @@ head(de_results$de_res)
 
 de_results$volcano_plot +
   theme_hiv() +
-  theme(legend.position = "none") +
-  geom_point(size = 2, alpha = 0.6)
+  theme(legend.position = "none")
 
 ggsave(
   filename = "Volcano plot HIV vs healthy.pdf",
@@ -97,7 +103,103 @@ ggsave(
 # Boxplots
 
 ```{r}
+subcategory_colors <- c(
+  "Primary HIV Infection"       = "#9FBFBA",  # teal / blue-green
+  "Severely impaired immunity" = "#C97A73",  # mustard yellow
+  "More preserved immunity"    = "#E3C35B",  # muted red
+  "Elite Controller"           = "#6B6FA9",  # blue-purple
+  "Healthy"                    = "#BDBDBD"   # neutral grey
+)
+```
 
+
+```{r}
+highlighted_proteins <- de_results$de_res |>
+  filter(logFC > 0.5) |>
+  arrange(adj.P.Val) |>
+  slice_head(n = 10) |>
+  bind_rows(
+    de_results$de_res |>
+      filter(logFC < -0.5) |>
+      arrange(adj.P.Val) |>
+      slice_head(n = 5)
+  ) |>
+  pull(Feature)
+
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy"
+)
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subcategory,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    ) +
+    labs(
+      title = "Expression of Selected Proteins by Cohort",
+      x     = "Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # tilt the x-axis text 45 degrees
+  theme(
+    axis.text.x    = element_text(angle = 65, hjust = 1)
+  ) 
+
+print(p_up)
+
+ggsave(
+  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.pdf",
+  plot     = p_up,
+  path     = "../plots/pdf/boxplot/",
+  width    = 12,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.png",
+  plot     = p_up,
+  path     = "../plots/png/boxplot/",
+  width    = 12,
+  height   = 8
+)
 ```
 
 
