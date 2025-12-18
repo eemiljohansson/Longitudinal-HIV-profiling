@@ -60,6 +60,57 @@ data_wide <- read_csv("../data/data_wide.csv")
 
 ### PCA
 
+#### Baseline
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_subcategory <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
+  geom_point(aes(size = `CD4/CD8 ratio (baseline)`)) +
+  # thin grey lines connecting points from the same ID
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  # Add dashed elipses around each subcategory
+  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2) +
+  theme_hiv()
+
+p_pca_baseline_subcategory
+
+ggsave(
+  filename = "pca_baseline_subcategory.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_baseline_subcategory.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+#### Baseline & follow-up
+
 ```{r}
 input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease == "HIV"))$DAid)
 
@@ -363,27 +414,6 @@ umap_df$umap_res |>
   theme_minimal(base_size = 14) +
   scale_color_brewer(palette = "Set1")
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # SessionInfo
 
