@@ -18,10 +18,9 @@ library(ggridges)
 ```{r}
 ggplot2::update_geom_defaults(
   "point",
-  list(size = 2.5, alpha = 0.6)
+  list(size = 2, alpha = 0.6)
 )
 ```
-
 
 ```{r}
 source("../scripts/functions/functions_disease_analyses.R")
@@ -29,6 +28,13 @@ source("../scripts/functions/nice_plots.R")
 source("../scripts/functions/run_de_analysis.R")
 source("../scripts/functions/themes_palettes.R")
 ```
+
+```{r}
+hd_plot_volcano_custom <- HDAnalyzeR::hd_plot_volcano
+
+
+```
+
 
 ## Load data
 
@@ -82,11 +88,31 @@ de_results <- hd_de_limma(hd_obj,
                   user_defined_proteins = NULL)
 
 head(de_results$de_res)
+```
 
-de_results$volcano_plot +
+```{r}
+p <- de_results$volcano_plot +
   theme_hiv() +
-  theme(legend.position = "none")
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
 
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
 ggsave(
   filename = "Volcano plot HIV vs healthy.pdf",
   path     = "../plots/pdf/volcano/",
@@ -111,7 +137,6 @@ subcategory_colors <- c(
   "Healthy"                    = "#BDBDBD"   # neutral grey
 )
 ```
-
 
 ```{r}
 highlighted_proteins <- de_results$de_res |>
@@ -181,7 +206,12 @@ p_up <- data_long %>%
   # tilt the x-axis text 45 degrees
   theme(
     axis.text.x    = element_text(angle = 65, hjust = 1)
-  ) 
+  ) +
+  # remove x-axis text
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
 
 print(p_up)
 
@@ -202,176 +232,512 @@ ggsave(
 )
 ```
 
-
-
-## Severely impaired immunity vs. healthy
-
 ```{r}
-# 2) if you prefer named data‐frames in your workspace:
-temp_metadata <- metadata |> filter(Timepoint != "Follow-up") |>  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32", "KIT", "CLSTN2", "OBP2B", "CBLN4")
 
-run_de_analysis(
-  data     = data_long |> filter(DAid %in% temp_metadata$DAid),
-  metadata = temp_metadata,
-  variable = "Subcategory",
-  case     = "Severely impaired immunity",
-  control  = "Healthy",
-  correct  = c("Age", "Sex"),
-  prefix   = "sii_healthy",
-  type         = "long",
-  sample_col   = "DAid",
-  feature_col  = "Assay",
-  global_assign = TRUE      # TRUE: creates
-                            #   acute_vte_healthy_de_res,
-                            #   acute_vte_healthy_sig_up,
-                            #   acute_vte_healthy_sig_down,
-                            #   acute_vte_healthy_n_up,
-                            #   acute_vte_healthy_n_down,
-                            #   acute_vte_healthy_volcano,
-                            #   acute_vte_healthy_volcano_cut
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy"
 )
 
-sii_healthy_de_res
-sii_healthy_volcano_cut
-sii_healthy_n_up
-sii_healthy_n_down
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subcategory,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 4, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    ) +
+    labs(
+      title = "Expression of Selected Proteins by Cohort",
+      x     = "Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # tilt the x-axis text 45 degrees
+  theme(
+    axis.text.x    = element_text(angle = 65, hjust = 1)
+  ) 
+
+print(p_up)
+
+ggsave(
+  filename = "selected proteins.pdf",
+  plot     = p_up,
+  path     = "../plots/pdf/boxplot/",
+  width    = 12,
+  height   = 8
+)
+
+ggsave(
+  filename = "selected proteins.png",
+  plot     = p_up,
+  path     = "../plots/png/boxplot/",
+  width    = 12,
+  height   = 8
+)
 ```
 
-## More preserved immunity vs. healthy
 
 ```{r}
-# 2) if you prefer named data‐frames in your workspace:
-temp_metadata <- metadata |> filter(Timepoint != "Follow-up") |>  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+highlighted_proteins <- c("CD4", "CD8A", "CXCL13", "LTA4H", "NOS3")
 
-run_de_analysis(
-  data     = data_long |> filter(DAid %in% temp_metadata$DAid),
-  metadata = temp_metadata,
-  variable = "Subcategory",
-  case     = "More preserved immunity",
-  control  = "Healthy",
-  correct  = c("Age", "Sex"),
-  prefix   = "mpi_healthy",
-  type         = "long",
-  sample_col   = "DAid",
-  feature_col  = "Assay",
-  global_assign = TRUE      # TRUE: creates
-                            #   acute_vte_healthy_de_res,
-                            #   acute_vte_healthy_sig_up,
-                            #   acute_vte_healthy_sig_down,
-                            #   acute_vte_healthy_n_up,
-                            #   acute_vte_healthy_n_down,
-                            #   acute_vte_healthy_volcano,
-                            #   acute_vte_healthy_volcano_cut
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(metadata, by = "DAid") %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # 🔑 NEW: split baseline/follow-up except Healthy
+    Subcategory_time = dplyr::case_when(
+      Subcategory == "Healthy" ~ "Healthy",
+      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+    )
+  )
+
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy"
 )
 
-mpi_healthy_de_res
-mpi_healthy_volcano_cut
-mpi_healthy_n_up
-mpi_healthy_n_down
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
+
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+print(p_up_plot)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 14,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 14,
+  height   = 8
+)
+
 ```
 
-## Primary HIV infection vs. healthy
+## Subgroups
+
+### Severely impaired immunity vs. healthy
 
 ```{r}
-# 2) if you prefer named data‐frames in your workspace:
-temp_metadata <- metadata |> filter(Timepoint != "Follow-up") |>  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subcategory %in% c("Severely impaired immunity", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
-run_de_analysis(
-  data     = data_long |> filter(DAid %in% temp_metadata$DAid),
-  metadata = temp_metadata,
-  variable = "Subcategory",
-  case     = "Primary HIV Infection",
-  control  = "Healthy",
-  correct  = c("Age", "Sex"),
-  prefix   = "phi_healthy",
-  type         = "long",
-  sample_col   = "DAid",
-  feature_col  = "Assay",
-  global_assign = TRUE      # TRUE: creates
-                            #   acute_vte_healthy_de_res,
-                            #   acute_vte_healthy_sig_up,
-                            #   acute_vte_healthy_sig_down,
-                            #   acute_vte_healthy_n_up,
-                            #   acute_vte_healthy_n_down,
-                            #   acute_vte_healthy_volcano,
-                            #   acute_vte_healthy_volcano_cut
-)
-
-phi_healthy_de_res
-phi_healthy_volcano_cut
-phi_healthy_n_up
-phi_healthy_n_down
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
 ```
 
-## Elite controllers vs. healthy
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
 
 ```{r}
-# 2) if you prefer named data‐frames in your workspace:
-temp_metadata <- metadata |> filter(Timepoint != "Follow-up") |>  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex", "BMI")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
 
-run_de_analysis(
-  data     = data_long |> filter(DAid %in% temp_metadata$DAid),
-  metadata = temp_metadata,
-  variable = "Subcategory",
-  case     = "Elite Controller",
-  control  = "Healthy",
-  correct  = c("Age", "Sex"),
-  prefix   = "ec_healthy",
-  type         = "long",
-  sample_col   = "DAid",
-  feature_col  = "Assay",
-  global_assign = TRUE      # TRUE: creates
-                            #   acute_vte_healthy_de_res,
-                            #   acute_vte_healthy_sig_up,
-                            #   acute_vte_healthy_sig_down,
-                            #   acute_vte_healthy_n_up,
-                            #   acute_vte_healthy_n_down,
-                            #   acute_vte_healthy_volcano,
-                            #   acute_vte_healthy_volcano_cut
-)
+head(de_results$de_res)
+```
 
-ec_healthy_de_res
-ec_healthy_volcano_cut
-ec_healthy_n_up
-ec_healthy_n_down
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_severely_healthy <- p
+
+ggsave(
+  filename = "Volcano plot severely impaired vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot severely impaired vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### More preserved immunity vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subcategory %in% c("More preserved immunity", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex", "BMI")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_preserved_healthy <- p
+
+ggsave(
+  filename = "Volcano plot more preserved vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot more preserved vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Primary HIV infection vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subcategory %in% c("Primary HIV Infection", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex", "BMI")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_early_healthy <- p
+
+ggsave(
+  filename = "Volcano plot early infection vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot early infection vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Elite controllers vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subcategory %in% c("Elite Controller", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex", "BMI")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_elite_healthy <- p
+
+ggsave(
+  filename = "Volcano plot elite controller vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot elite controller vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
 ```
 
 # Volcano plots
 
-```{r ,fig.width=24, fig.height=10}
-# Plot volcano plot for the results next to each other
-sii_healthy_volcano_cut + ggtitle("Severely impaired immunity vs. healthy") +
-  mpi_healthy_volcano_cut + ggtitle("More preserved immunity vs. healthy") +
-  phi_healthy_volcano_cut + ggtitle("Primary HIV infection vs. healthy") +
-  ec_healthy_volcano_cut + ggtitle("Elite controllers vs. healthy") +
-  plot_layout(ncol = 4) +
-  plot_annotation(title = "Differential expression analysis") &
-  theme(plot.title = element_text(hjust = 0.5))
-
-ggsave(
-  filename = "Volcano plots all vs healthy cut.pdf",
-  path     = "results/figures/figure 2/",
-  width    = 24,
-  height   = 10)
+```{r}
+sii_healthy_volcano <- p_volcano_severely_healthy
+mpi_healthy_volcano <- p_volcano_preserved_healthy
+phi_healthy_volcano <- p_volcano_early_healthy
+ec_healthy_volcano  <- p_volcano_elite_healthy
 ```
 
+
 ```{r}
-# Plot volcano plot for the results next to each other
-phi_healthy_volcano + ggtitle("Primary HIV infection vs. healthy") +
-  sii_healthy_volcano + ggtitle("Severely impaired immunity vs. healthy") +
-  mpi_healthy_volcano + ggtitle("More preserved immunity vs. healthy") +
-  ec_healthy_volcano + ggtitle("Elite controllers vs. healthy") +
-  plot_layout(ncol = 4) +
-  plot_annotation(title = "Differential expression analysis") &
-  theme(plot.title = element_text(hjust = 0.5))
+phi_healthy_volcano + ggtitle("Primary HIV infection vs. healthy") + theme(legend.position = "none") +
+  sii_healthy_volcano + ggtitle("Severely impaired immunity vs. healthy") + theme(legend.position = "none") +
+  mpi_healthy_volcano + ggtitle("More preserved immunity vs. healthy") + theme(legend.position = "none") +
+  ec_healthy_volcano + ggtitle("Elite controllers vs. healthy") + theme(legend.position = "none") +
+  plot_layout(ncol = 4)
 
 ggsave(
   filename = "Volcano plots all vs healthy.pdf",
-  path     = "results/figures/figure 2/",
+  path     = "../plots/pdf/volcano/",
   width    = 24,
   height   = 10)
 ```
-
 
 # Compare comparisons
 
