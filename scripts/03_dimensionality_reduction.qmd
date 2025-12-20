@@ -109,6 +109,107 @@ ggsave(
   height   = 7)
 ```
 
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid) |>
+  # Filter columns to only contain the significant proteins from de_res_hiv_baseline_healthy
+  select(DAid, all_of(de_res_hiv_baseline_healthy |> filter(adj.P.Val < 0.05) |> pull(Feature)))
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+subcategory_colors <- c(
+  "Primary HIV Infection"       = "#65A56E",  # teal / blue-green
+  "Severely impaired immunity" = "#CD4645",  # mustard yellow
+  "More preserved immunity"    = "#E3C35B",  # muted red
+  "Elite Controller"           = "#377EB8",  # blue-purple
+  "Healthy"                    = "#BDBDBD"   # neutral grey
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_subcategory <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
+  geom_point(
+    aes(size = `CD4/CD8 ratio (baseline)`),
+    alpha  = 0.7,
+    stroke = 0
+  ) +
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  geom_convexhull(
+    aes(fill = Subcategory, colour = Subcategory),
+    alpha = 0.2
+  ) +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values  = subcategory_colors) +
+  theme_minimal() +
+  theme_hiv()
+
+p_pca_baseline_subcategory
+
+ggsave(
+  filename = "pca_baseline_subcategory_hiv_healthy.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_baseline_subcategory_hiv_healthy.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+## Filtering for differentially abundant proteins in baseline
+
+```{r}
+subcategory_colors <- c(
+  "Primary HIV Infection"       = "#65A56E",  # teal / blue-green
+  "Severely impaired immunity" = "#CD4645",  # mustard yellow
+  "More preserved immunity"    = "#E3C35B",  # muted red
+  "Elite Controller"           = "#377EB8",  # blue-purple
+  "Healthy"                    = "#BDBDBD"   # neutral grey
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_subcategory <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
+  geom_point(
+    aes(size = `CD4/CD8 ratio (baseline)`),
+    alpha  = 0.7,
+    stroke = 0
+  ) +
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  geom_convexhull(
+    aes(fill = Subcategory, colour = Subcategory),
+    alpha = 0.2
+  ) +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values  = subcategory_colors) +
+  theme_minimal() +
+  theme_hiv()
+
+p_pca_baseline_subcategory
+```
+
+
 #### Baseline & follow-up
 
 ```{r}
