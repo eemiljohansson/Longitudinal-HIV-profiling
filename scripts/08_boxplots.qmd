@@ -1,0 +1,193 @@
+---
+title: "08_boxplots"
+format: html
+---
+
+# Selected examples
+
+```{r}
+highlighted_proteins <- c("CD4", "CD6", "CD8A", "CXCL10", "CXCL13", "LTA4H", "NOS3", 
+                          "CD48", "FABP2", "LAG3", "CCN1", "FABP5", "DPEP2", "PAG1")
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(metadata, by = "DAid") %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # 🔑 NEW: split baseline/follow-up except Healthy
+    Subcategory_time = dplyr::case_when(
+      Subcategory == "Healthy" ~ "Healthy",
+      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+    )
+  )
+
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy"
+)
+
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
+
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 7, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+print(p_up_plot)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_paired.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 30,
+  height   = 10
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_paired.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 30,
+  height   = 10
+)
+```
+
+# All proteins
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+library(ggforce)
+
+# ---- Parameters ----
+proteins_per_page <- 30
+ncol_facets <- 5
+nrow_facets <- 6
+
+# ---- Prepare plotting data ----
+p_all <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(metadata, by = "DAid") %>%
+  mutate(
+    Subcategory_time = dplyr::case_when(
+      Subcategory == "Healthy" ~ "Healthy",
+      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+    )
+  )
+
+# ---- Define your desired x-axis order ----
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy"
+)
+
+p_all$Subcategory_time <- factor(p_all$Subcategory_time, levels = x_order)
+
+# ---- Get unique proteins and batch into chunks of 30 ----
+all_proteins <- unique(p_all$Assay)
+protein_chunks <- split(all_proteins, ceiling(seq_along(all_proteins) / proteins_per_page))
+
+# ---- Output PDF ----
+pdf("../plots/pdf/boxplot/all_proteins_boxplots_paged.pdf", width = 20, height = 14)
+
+for (i in seq_along(protein_chunks)) {
+  chunk <- protein_chunks[[i]]
+  
+  message("📄 Plotting page ", i, " with ", length(chunk), " proteins...")
+  
+  df_chunk <- p_all %>% filter(Assay %in% chunk)
+  
+  p_chunk <- ggplot(
+    df_chunk,
+    aes(
+      x = Subcategory_time,
+      y = NPX,
+      color = Subcategory,
+      fill = Subcategory
+    )
+  ) +
+    geom_quasirandom(alpha = 0.5, stroke = 0, show.legend = FALSE) +
+    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6, show.legend = FALSE) +
+    facet_wrap(~ Assay, ncol = ncol_facets, nrow = nrow_facets, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme_hiv() +
+    theme(
+      axis.text.x = element_text(angle = 75, hjust = 1, size = 8),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size = 10),
+      strip.text = element_text(size = 9, face = "bold"),
+      plot.title = element_text(size = 14, face = "bold"),
+      legend.position = "none"
+    ) +
+    labs(
+      title = paste("Protein Expression (page", i, "of", length(protein_chunks), ")"),
+      y = "NPX"
+    )
+  
+  print(p_chunk)
+}
+
+dev.off()
+message("✅ Multi-page PDF saved to ../plots/pdf/boxplot/all_proteins_boxplots_paged.pdf")
+
+```
+
+
+
+
+
+
+
+
