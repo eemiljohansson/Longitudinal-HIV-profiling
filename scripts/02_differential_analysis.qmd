@@ -51,7 +51,7 @@ data_wide |>
 
 # Differential protein analysis
 
-## Grouped HIV-1 vs. Healthy
+## Grouped HIV-1 (baseline) vs. Healthy
 
 ```{r}
 input_metadata <- metadata |>
@@ -123,6 +123,84 @@ ggsave(
 
 ggsave(
   filename = "Volcano plot HIV vs healthy cut.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
+```
+
+## Grouped HIV-1 (follow-up) vs. Healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Subcategory != "Elite Controller") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex", "BMI")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_hiv_baseline_healthy_fu <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+ggsave(
+  filename = "Volcano grouped HIV vs healthy follow-up.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano grouped HIV vs healthy follow-up.png",
   path     = "../plots/png/volcano/",
   width    = 10,
   height   = 7)
@@ -1141,6 +1219,536 @@ ggsave(
   width    = 24,
   height   = 7)
 ```
+
+# Follow-up vs. Baseline
+
+## Updating limma function
+
+```{r}
+hd_de_limma_paired <- function(dat,
+                               metadata = NULL,
+                               variable = "Disease",
+                               case,
+                               control = NULL,
+                               correct = NULL,
+                               log_transform = FALSE,
+                               paired = FALSE,
+                               id_column = "ID") {
+
+  Variable <- rlang::sym(variable)
+
+  # ----------------------------
+  # Input handling
+  # ----------------------------
+  if (inherits(dat, "HDAnalyzeR")) {
+    wide_data <- dat$data
+    metadata  <- dat$metadata
+    sample_id <- dat$sample_id
+  } else {
+    wide_data <- dat
+    sample_id <- colnames(dat)[1]
+  }
+
+  if (is.null(metadata)) stop("Metadata must be provided.")
+  if (!variable %in% colnames(metadata)) stop("Variable not found in metadata.")
+  if (paired && !id_column %in% colnames(metadata))
+    stop("id_column must exist in metadata when paired = TRUE.")
+
+  if (log_transform) {
+    wide_data <- hd_log_transform(wide_data)
+  }
+
+  if (is.null(control)) {
+    control <- setdiff(unique(metadata[[variable]]), case)
+  }
+
+  variable_type <- hd_detect_vartype(metadata[[variable]], unique_threshold = 2)
+
+  # ----------------------------
+  # Join data
+  # ----------------------------
+  meta_cols <- c(sample_id, variable, correct)
+  if (paired) meta_cols <- c(meta_cols, id_column)
+
+  join_data <- wide_data |>
+    dplyr::left_join(
+      metadata |> dplyr::select(dplyr::all_of(meta_cols)),
+      by = sample_id
+    ) |>
+    dplyr::filter(!!Variable %in% c(case, control)) |>
+    dplyr::filter(!dplyr::if_any(dplyr::all_of(c(variable, correct)), is.na))
+
+  # Force factor with correct levels
+  if (variable_type == "categorical") {
+    join_data[[variable]] <- factor(
+      join_data[[variable]],
+      levels = c(control, case)
+    )
+  }
+
+  # ----------------------------
+  # Build design
+  # ----------------------------
+  formula <- paste0("~0 + ", variable)
+
+  if (!is.null(correct)) {
+    var_types <- sapply(metadata[correct], hd_detect_vartype)
+    for (v in correct) {
+      term <- if (var_types[v] == "categorical") {
+        paste0("as.factor(", v, ")")
+      } else {
+        v
+      }
+      formula <- paste(formula, "+", term)
+    }
+  }
+
+  design <- model.matrix(as.formula(formula), data = join_data)
+  colnames(design) <- make.names(colnames(design))
+
+  # ----------------------------
+  # Expression matrix
+  # ----------------------------
+  data_fit <- join_data |>
+    dplyr::select(-dplyr::any_of(c(variable, correct, id_column))) |>
+    tibble::column_to_rownames(sample_id) |>
+    t()
+
+  # ----------------------------
+  # Fit model
+  # ----------------------------
+  if (paired) {
+
+    block <- join_data[[id_column]]
+
+    dupcor <- limma::duplicateCorrelation(
+      data_fit,
+      design,
+      block = block
+    )
+
+    fit <- limma::lmFit(
+      data_fit,
+      design,
+      block = block,
+      correlation = dupcor$consensus.correlation
+      # ⚠️ robust disabled by design
+    )
+
+  } else {
+
+    fit <- limma::lmFit(
+      data_fit,
+      design,
+      method = "robust",
+      maxit = 10000
+    )
+  }
+
+  # ----------------------------
+  # Contrasts (categorical only)
+  # ----------------------------
+  if (variable_type == "categorical") {
+
+    case_col    <- make.names(paste0(variable, case))
+    control_col <- make.names(paste0(variable, control))
+
+    if (!all(c(case_col, control_col) %in% colnames(design))) {
+      stop(
+        "Case/control columns not found in design matrix.\n",
+        "Expected: ", case_col, ", ", control_col, "\n",
+        "Found: ", paste(colnames(design), collapse = ", ")
+      )
+    }
+
+    contrast <- limma::makeContrasts(
+      contrasts = paste0(case_col, " - ", control_col),
+      levels = design
+    )
+
+    fit <- limma::contrasts.fit(fit, contrast)
+  }
+
+  # ----------------------------
+  # Empirical Bayes
+  # ----------------------------
+  fit <- limma::eBayes(fit)
+
+  # ----------------------------
+  # Output
+  # ----------------------------
+  de_res <- limma::topTable(
+    fit,
+    n = Inf,
+    adjust.method = "fdr",
+    confint = TRUE
+  ) |>
+    tibble::as_tibble(rownames = "Feature") |>
+    dplyr::arrange(adj.P.Val)
+
+  out <- list(de_res = de_res)
+  class(out) <- "hd_de"
+
+  return(out)
+}
+```
+
+### Primary HIV infection paired
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subcategory %in% "Primary HIV Infection") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_early_healthy_paired <- p
+
+ggsave(
+  filename = "Volcano plot early infection vs healthy paired.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot early infection vs healthy paired.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### More preserved immunity vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subcategory %in% "More preserved immunity") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_preserved_healthy_paired <- p
+
+ggsave(
+  filename = "Volcano plot more preserved vs healthy paired.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot more preserved vs healthy paired.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Severely impaired immunity vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subcategory %in% c("Severely impaired immunity")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_severely_healthy_paired <- p
+
+ggsave(
+  filename = "Volcano plot severely impaired vs healthy paired.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot severely impaired vs healthy paired.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Elite controllers vs. healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subcategory %in% c("Elite Controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_elite_healthy_paired <- p
+
+ggsave(
+  filename = "Volcano plot elite controller vs healthy paired.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot elite controller vs healthy paired.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Combine volcano plots
+
+```{r}
+phi_healthy_volcano_paired <- p_volcano_early_healthy_paired
+mpi_healthy_volcano_paired <- p_volcano_preserved_healthy_paired
+sii_healthy_volcano_paired <- p_volcano_severely_healthy_paired
+ec_healthy_volcano_paired  <- p_volcano_elite_healthy_paired
+```
+
+```{r}
+phi_healthy_volcano_paired + ggtitle("Early infection (follow-up vs. baseline)") + theme(legend.position = "none") +
+  mpi_healthy_volcano_paired + ggtitle("More preserved immunity (follow-up vs. baseline)") + theme(legend.position = "none") +
+  sii_healthy_volcano_paired + ggtitle("Severely impaired immunity (follow-up vs. baseline)") + theme(legend.position = "none") +
+  ec_healthy_volcano_paired + ggtitle("Elite controllers (follow-up vs. baseline)") + theme(legend.position = "none") +
+  plot_layout(ncol = 4)
+
+ggsave(
+  filename = "Volcano plots all vs healthy paired.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 24,
+  height   = 7)
+```
+
+
+
+
+
+
 
 
 # Compare comparisons
