@@ -210,6 +210,137 @@ p_pca_baseline_subcategory
 ```
 
 
+# Baseline, follow-up and healthy
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease %in% c("HIV", "Healthy")))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+timepoint_colors <- c(
+  "Baseline"  = "#E94849",
+  "Follow-up" = "#5F98C6",
+  "Healthy"   = "#71BF6E"
+)
+
+hiv_panels <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller"
+)
+
+plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  # Make ID into character
+  mutate(ID = as.character(ID)) |>
+  dplyr::filter(Subcategory %in% c(hiv_panels, "Healthy")) |>
+  dplyr::mutate(
+    Facet_group = Subcategory,
+    # ensure Healthy has a consistent Timepoint label
+    Timepoint = ifelse(Subcategory == "Healthy", "Healthy", Timepoint)
+  )
+
+healthy_df <- plot_df |>
+  dplyr::filter(Subcategory == "Healthy") |>
+  dplyr::select(-Facet_group) |>
+  tidyr::expand_grid(Facet_group = hiv_panels)
+
+plot_df <- plot_df |>
+  dplyr::filter(Subcategory != "Healthy") |>
+  dplyr::bind_rows(healthy_df)
+
+plot_df$Facet_group <- factor(plot_df$Facet_group, levels = hiv_panels)
+
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_split_timepoint <- ggplot(
+  plot_df,
+  aes(x = PC1, y = PC2)
+) +
+
+  # 🔹 Filled ellipses (behind everything)
+  stat_ellipse(
+    data = plot_df,
+    aes(
+      fill  = Timepoint,
+      group = interaction(Timepoint, Facet_group)
+    ),
+    geom  = "polygon",
+    alpha = 0.15,
+    colour = NA
+  ) +
+
+  # 🔹 Dashed ellipse outlines
+  stat_ellipse(
+    data = plot_df,
+    aes(
+      colour = Timepoint,
+      group  = interaction(Timepoint, Facet_group)
+    ),
+    linetype = "dashed",
+    linewidth = 0.6
+  ) +
+
+  # 🔹 Thin grey paired lines (HIV only)
+  geom_line(
+    data = plot_df |>
+      dplyr::filter(
+        Disease == "HIV",
+        Timepoint %in% c("Baseline", "Follow-up")
+      ),
+    aes(group = interaction(ID, Facet_group)),
+    colour = "grey70",
+    linewidth = 0.3,
+    alpha = 0.6
+  ) +
+
+  # 🔹 Points (on top)
+  geom_point(
+    aes(color = Timepoint),
+    size   = 3,
+    alpha  = 0.7,
+    stroke = 0
+  ) +
+
+  facet_wrap(~ Facet_group, ncol = 2) +
+  scale_color_manual(values = timepoint_colors) +
+  scale_fill_manual(values  = timepoint_colors) +
+  labs(
+    title = "PCA of HIV subgroups compared to Healthy",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Timepoint",
+    fill  = "Timepoint"
+  ) +
+  theme_minimal() +
+  theme_hiv()
+
+p_pca_split_timepoint
+
+ggsave(
+  filename = "pca_split_timepoint_hiv_healthy.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 18,
+  height   = 10)
+
+ggsave(
+  filename = "pca_split_timepoint_hiv_healthy.png",
+  path     = "../plots/png/pca/",
+  width    = 18,
+  height   = 10)
+```
+
 #### Baseline & follow-up
 
 ```{r}
