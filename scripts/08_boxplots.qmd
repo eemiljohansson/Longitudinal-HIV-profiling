@@ -185,9 +185,739 @@ message("✅ Multi-page PDF saved to ../plots/pdf/boxplot/all_proteins_boxplots_
 ```
 
 
+# Boxplots
+
+```{r}
+subcategory_colors <- c(
+  "Primary HIV Infection"       = "#9FBFBA",  # teal / blue-green
+  "Severely impaired immunity" = "#C97A73",  # mustard yellow
+  "More preserved immunity"    = "#E3C35B",  # muted red
+  "Elite Controller"           = "#6B6FA9",  # blue-purple
+  "Healthy"                    = "#BDBDBD"   # neutral grey
+)
+```
+
+```{r}
+highlighted_proteins <- de_results$de_res |>
+  filter(logFC > 0.5) |>
+  arrange(adj.P.Val) |>
+  slice_head(n = 10) |>
+  bind_rows(
+    de_results$de_res |>
+      filter(logFC < -0.5) |>
+      arrange(adj.P.Val) |>
+      slice_head(n = 5)
+  ) |>
+  pull(Feature)
+
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy"
+)
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subcategory,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    ) +
+    labs(
+      title = "Expression of Selected Proteins by Cohort",
+      x     = "Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # tilt the x-axis text 45 degrees
+  theme(
+    axis.text.x    = element_text(angle = 65, hjust = 1)
+  ) +
+  # remove x-axis text
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+print(p_up)
+
+ggsave(
+  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.pdf",
+  plot     = p_up,
+  path     = "../plots/pdf/boxplot/",
+  width    = 12,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.png",
+  plot     = p_up,
+  path     = "../plots/png/boxplot/",
+  width    = 12,
+  height   = 8
+)
+```
+
+```{r}
+highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32", "KIT", "CLSTN2", "OBP2B", "CBLN4")
+
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy"
+)
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subcategory,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 4, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    ) +
+    labs(
+      title = "Expression of Selected Proteins by Cohort",
+      x     = "Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # tilt the x-axis text 45 degrees
+  theme(
+    axis.text.x    = element_text(angle = 65, hjust = 1)
+  ) 
+
+print(p_up)
+
+ggsave(
+  filename = "selected proteins.pdf",
+  plot     = p_up,
+  path     = "../plots/pdf/boxplot/",
+  width    = 12,
+  height   = 8
+)
+
+ggsave(
+  filename = "selected proteins.png",
+  plot     = p_up,
+  path     = "../plots/png/boxplot/",
+  width    = 12,
+  height   = 8
+)
+```
+
+```{r}
+highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32", "KIT", "CLSTN2", "OBP2B", "CBLN4")
+
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy"
+)
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subcategory,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 4, scales = "free_y") +
+    scale_color_manual(values = subcategory_colors) +
+    scale_fill_manual(values = subcategory_colors) +
+    theme_classic() +
+    theme(
+      axis.text.x     = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    ) +
+    labs(
+      title = "Expression of Selected Proteins by Cohort",
+      x     = "Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # tilt the x-axis text 45 degrees
+  theme(
+    axis.text.x    = element_text(angle = 65, hjust = 1)
+  ) 
+
+print(p_up)
+```
+
+
+```{r}
+highlighted_proteins <- c("CD4", "CD8A", "CXCL13", "LTA4H", "NOS3")
+
+p_up <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(metadata, by = "DAid") %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # 🔑 NEW: split baseline/follow-up except Healthy
+    Subcategory_time = dplyr::case_when(
+      Subcategory == "Healthy" ~ "Healthy",
+      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+    )
+  )
+
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy"
+)
+
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
+
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+print(p_up_plot)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 14,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 14,
+  height   = 8
+)
+
+```
+
+# CVD, MET, HIV FU Baseline
+
+```{r}
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+highlighted_proteins <- c("LEP", "IL10", "IGFBP2", "CXCL13", "CNDP1",
+                          "GFAP", "WFDC2", "CCL20", "AGRP", "KLK13",
+                          "DDX58", "SLAMF8", "ASAH2", "SORD", "GZMH")
+
+p_up <- hdba_data_all_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(metadata |> bind_rows(hdba_metadata), by = "DAid") %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # 🔑 NEW: split baseline/follow-up except Healthy
+    Subcategory_time = dplyr::case_when(
+      Subcategory == "Healthy" ~ "Healthy",
+      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+    )
+  )
+
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
+
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+print(p_up_plot)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV FU CVD MET.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 30,
+  height   = 10
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV FU CVD MET.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 30,
+  height   = 10
+)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ---------------------------
+# Desired ordering
+# ---------------------------
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+subcategory_colors <- c(
+  "Primary HIV Infection"     = "#D55E00",
+  "More preserved immunity"   = "#0072B2",
+  "Severely impaired immunity"= "#CC79A7",
+  "Elite Controller"          = "#009E73",
+  "Healthy"                   = "#71BF6E",
+  "Cardiovascular"            = "#FC8D62",  # ✅ requested
+  "Metabolic"                 = "#E5C494"   # ✅ requested
+)
+
+
+highlighted_proteins <- c(
+  "LEP", "IL10", "IGFBP2", "CXCL13", "CNDP1",
+  "GFAP", "WFDC2", "CCL20", "AGRP", "KLK13",
+  "DDX58", "SLAMF8", "ASAH2", "SORD", "GZMH"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- hdba_data_all_long %>%
+  select(DAid, Assay, NPX) %>%
+  inner_join(
+    metadata |> bind_rows(hdba_metadata),
+    by = "DAid"
+  ) %>%
+  filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # ✅ FIX: correct handling of timepoint splitting
+    Subcategory_time = case_when(
+  Subcategory %in% c("Healthy", "Cardiovascular", "Metabolic") ~ Subcategory,
+  TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
+)
+
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory,
+    group = Subcategory_time
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    width  = 0.25,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_FU_CVD_MET.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 30,
+  height   = 10
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_FU_CVD_MET.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 30,
+  height   = 10
+)
+
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ---------------------------
+# Desired ordering
+# ---------------------------
+desired_order <- c(
+  "Primary HIV Infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite Controller",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+# ---------------------------
+# Subcategory colors
+# ---------------------------
+subcategory_colors <- c(
+  "Primary HIV Infection"      = "#D55E00",
+  "More preserved immunity"    = "#0072B2",
+  "Severely impaired immunity" = "#CC79A7",
+  "Elite Controller"           = "#009E73",
+  "Healthy"                    = "#71BF6E",
+  "Cardiovascular"             = "#FC8D62",
+  "Metabolic"                  = "#E5C494"
+)
+
+# ---------------------------
+# Highlighted proteins
+# ---------------------------
+highlighted_proteins <- c(
+  "LEP", "IL10", "IGFBP2", "CXCL13", "CNDP1",
+  "GFAP", "WFDC2", "CCL20", "AGRP", "KLK13",
+  "DDX58", "SLAMF8", "ASAH2", "SORD", "GZMH"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |> bind_rows(hdba_data_long) %>%
+  select(DAid, Assay, NPX) %>%
+  inner_join(
+    metadata |> bind_rows(hdba_metadata),
+    by = "DAid"
+  ) %>%
+  filter(
+    Assay %in% highlighted_proteins,
+    Subcategory %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subcategory = factor(Subcategory, levels = desired_order),
+
+    # ✅ FINAL, ROBUST LOGIC
+    Subcategory_time = if_else(
+      Subcategory %in% c(
+        "Primary HIV Infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite Controller"
+      ),
+      paste(Subcategory, Timepoint, sep = " – "),
+      as.character(Subcategory)
+    )
+  )
 
 
 
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "Primary HIV Infection – Baseline",
+  "Primary HIV Infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+  "Elite Controller – Baseline",
+  "Elite Controller – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
 
+p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
 
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Subcategory_time,
+    y     = NPX,
+    color = Subcategory,
+    fill  = Subcategory,
+    group = Subcategory_time
+  )
+) +
+  geom_quasirandom(
+    alpha  = 0.7,
+    stroke = 0,
+    width  = 0.25,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of Selected Proteins by Cohort and Timepoint",
+    x     = "Cohort / Timepoint",
+    y     = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_FU_CVD_MET.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 24,
+  height   = 14
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_HIV_FU_CVD_MET.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 24,
+  height   = 14
+)
+
+```
 
