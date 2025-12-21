@@ -29,13 +29,6 @@ source("../scripts/functions/run_de_analysis.R")
 source("../scripts/functions/themes_palettes.R")
 ```
 
-```{r}
-hd_plot_volcano_custom <- HDAnalyzeR::hd_plot_volcano
-
-
-```
-
-
 ## Load data
 
 ```{r}
@@ -206,343 +199,7 @@ ggsave(
   height   = 7)
 ```
 
-# Boxplots
 
-```{r}
-subcategory_colors <- c(
-  "Primary HIV Infection"       = "#9FBFBA",  # teal / blue-green
-  "Severely impaired immunity" = "#C97A73",  # mustard yellow
-  "More preserved immunity"    = "#E3C35B",  # muted red
-  "Elite Controller"           = "#6B6FA9",  # blue-purple
-  "Healthy"                    = "#BDBDBD"   # neutral grey
-)
-```
-
-```{r}
-highlighted_proteins <- de_results$de_res |>
-  filter(logFC > 0.5) |>
-  arrange(adj.P.Val) |>
-  slice_head(n = 10) |>
-  bind_rows(
-    de_results$de_res |>
-      filter(logFC < -0.5) |>
-      arrange(adj.P.Val) |>
-      slice_head(n = 5)
-  ) |>
-  pull(Feature)
-
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(
-    Assay %in% highlighted_proteins,
-    Subcategory %in% desired_order
-  ) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(
-    x     = Subcategory,
-    y     = NPX,
-    color = Subcategory,
-    fill  = Subcategory
-  )) +
-    geom_quasirandom(
-      alpha  = 0.7,
-      stroke = 0,
-      show.legend = FALSE
-    ) +
-    geom_boxplot(
-      color = "black",
-      outlier.shape = NA,
-      alpha = 0.6
-    ) +
-    facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
-    scale_color_manual(values = subcategory_colors) +
-    scale_fill_manual(values = subcategory_colors) +
-    theme_classic() +
-    theme(
-      axis.text.x     = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    ) +
-  theme_hiv() +
-  # tilt the x-axis text 45 degrees
-  theme(
-    axis.text.x    = element_text(angle = 65, hjust = 1)
-  ) +
-  # remove x-axis text
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank()
-  )
-
-print(p_up)
-
-ggsave(
-  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.pdf",
-  plot     = p_up,
-  path     = "../plots/pdf/boxplot/",
-  width    = 12,
-  height   = 8
-)
-
-ggsave(
-  filename = "boxplot_top_differential_proteins_HIV_vs_healthy.png",
-  plot     = p_up,
-  path     = "../plots/png/boxplot/",
-  width    = 12,
-  height   = 8
-)
-```
-
-```{r}
-highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32", "KIT", "CLSTN2", "OBP2B", "CBLN4")
-
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(
-    Assay %in% highlighted_proteins,
-    Subcategory %in% desired_order
-  ) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(
-    x     = Subcategory,
-    y     = NPX,
-    color = Subcategory,
-    fill  = Subcategory
-  )) +
-    geom_quasirandom(
-      alpha  = 0.7,
-      stroke = 0,
-      show.legend = FALSE
-    ) +
-    geom_boxplot(
-      color = "black",
-      outlier.shape = NA,
-      alpha = 0.6
-    ) +
-    facet_wrap(~ Assay, ncol = 4, scales = "free_y") +
-    scale_color_manual(values = subcategory_colors) +
-    scale_fill_manual(values = subcategory_colors) +
-    theme_classic() +
-    theme(
-      axis.text.x     = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    ) +
-  theme_hiv() +
-  # tilt the x-axis text 45 degrees
-  theme(
-    axis.text.x    = element_text(angle = 65, hjust = 1)
-  ) 
-
-print(p_up)
-
-ggsave(
-  filename = "selected proteins.pdf",
-  plot     = p_up,
-  path     = "../plots/pdf/boxplot/",
-  width    = 12,
-  height   = 8
-)
-
-ggsave(
-  filename = "selected proteins.png",
-  plot     = p_up,
-  path     = "../plots/png/boxplot/",
-  width    = 12,
-  height   = 8
-)
-```
-
-```{r}
-highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32", "KIT", "CLSTN2", "OBP2B", "CBLN4")
-
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(
-    Assay %in% highlighted_proteins,
-    Subcategory %in% desired_order
-  ) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(
-    x     = Subcategory,
-    y     = NPX,
-    color = Subcategory,
-    fill  = Subcategory
-  )) +
-    geom_quasirandom(
-      alpha  = 0.7,
-      stroke = 0,
-      show.legend = FALSE
-    ) +
-    geom_boxplot(
-      color = "black",
-      outlier.shape = NA,
-      alpha = 0.6
-    ) +
-    facet_wrap(~ Assay, ncol = 4, scales = "free_y") +
-    scale_color_manual(values = subcategory_colors) +
-    scale_fill_manual(values = subcategory_colors) +
-    theme_classic() +
-    theme(
-      axis.text.x     = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    ) +
-  theme_hiv() +
-  # tilt the x-axis text 45 degrees
-  theme(
-    axis.text.x    = element_text(angle = 65, hjust = 1)
-  ) 
-
-print(p_up)
-```
-
-
-```{r}
-highlighted_proteins <- c("CD4", "CD8A", "CXCL13", "LTA4H", "NOS3")
-
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(metadata, by = "DAid") %>%
-  dplyr::filter(
-    Assay %in% highlighted_proteins,
-    Subcategory %in% desired_order
-  ) %>%
-  mutate(
-    Assay = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order),
-
-    # 🔑 NEW: split baseline/follow-up except Healthy
-    Subcategory_time = dplyr::case_when(
-      Subcategory == "Healthy" ~ "Healthy",
-      TRUE ~ paste(Subcategory, Timepoint, sep = " – ")
-    )
-  )
-
-x_order <- c(
-  "Primary HIV Infection – Baseline",
-  "Primary HIV Infection – Follow-up",
-  "More preserved immunity – Baseline",
-  "More preserved immunity – Follow-up",
-  "Severely impaired immunity – Baseline",
-  "Severely impaired immunity – Follow-up",
-  "Elite Controller – Baseline",
-  "Elite Controller – Follow-up",
-  "Healthy"
-)
-
-p_up$Subcategory_time <- factor(p_up$Subcategory_time, levels = x_order)
-
-p_up_plot <- ggplot(
-  p_up,
-  aes(
-    x     = Subcategory_time,
-    y     = NPX,
-    color = Subcategory,
-    fill  = Subcategory
-  )
-) +
-  geom_quasirandom(
-    alpha  = 0.7,
-    stroke = 0,
-    show.legend = FALSE
-  ) +
-  geom_boxplot(
-    color = "black",
-    outlier.shape = NA,
-    alpha = 0.6
-  ) +
-  facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
-  scale_color_manual(values = subcategory_colors) +
-  scale_fill_manual(values = subcategory_colors) +
-  theme_classic() +
-  theme_hiv() +
-  theme(
-    axis.text.x = element_text(angle = 75, hjust = 1),
-    legend.position = "none"
-  ) +
-  labs(
-    title = "Expression of Selected Proteins by Cohort and Timepoint",
-    x     = "Cohort / Timepoint",
-    y     = "NPX"
-  )
-
-print(p_up_plot)
-
-ggsave(
-  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.pdf",
-  plot     = p_up_plot,
-  path     = "../plots/pdf/boxplot/",
-  width    = 14,
-  height   = 8
-)
-
-ggsave(
-  filename = "boxplot_selected_proteins_HIV_vs_healthy_baseline_followup.png",
-  plot     = p_up_plot,
-  path     = "../plots/png/boxplot/",
-  width    = 14,
-  height   = 8
-)
-
-```
 
 ## Subgroups (Baseline)
 
@@ -1744,735 +1401,409 @@ ggsave(
   height   = 7)
 ```
 
-
-
-
-
-
-
-
-# Compare comparisons
-
-## Upset plot
-
-### All classes
+# Paired grouped HIV-1 FU to baseline
 
 ```{r}
-library(ComplexUpset)
-library(ggplot2)
-library(dplyr)
+input_metadata <- metadata |>
+  filter(!Subcategory %in% c("Healthy", "Elite Controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
 
-sets_list <- list(
-  SII_up   = sii_healthy_sig_up$Feature,
-  SII_down = sii_healthy_sig_down$Feature,
-  MPI_up   = mpi_healthy_sig_up$Feature,
-  MPI_down = mpi_healthy_sig_down$Feature,
-  PHI_up   = phi_healthy_sig_up$Feature,
-  PHI_down = phi_healthy_sig_down$Feature,
-  EC_up    = ec_healthy_sig_up$Feature,
-  EC_down  = ec_healthy_sig_down$Feature
-)
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
 
-df_sets <- fromList(sets_list)
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
 
-p <- ComplexUpset::upset(
-  df_sets,
-  intersect            = names(sets_list),
-  width_ratio          = 0.1,
-  sort_sets            = "descending",     # replaces order_sets_by
-  sort_intersections_by= "cardinality",    # replaces order_intersections_by
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_hiv_fu_baseline <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
   )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
 
 p
 
-# save to file
+p_volcano_hiv_fu_baseline <- p
+
 ggsave(
-  filename = "UpSet_all_vs_healthy_complex.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 14,
-  height   = 6
-)
-```
-
-### No Elite controllers
-
-```{r}
-library(ComplexUpset)
-library(ggplot2)
-library(dplyr)
-
-sets_list <- list(
-  SII_up   = sii_healthy_sig_up$Feature,
-  SII_down = sii_healthy_sig_down$Feature,
-  MPI_up   = mpi_healthy_sig_up$Feature,
-  MPI_down = mpi_healthy_sig_down$Feature,
-  PHI_up   = phi_healthy_sig_up$Feature,
-  PHI_down = phi_healthy_sig_down$Feature
-)
-
-df_sets <- fromList(sets_list)
-
-p <- ComplexUpset::upset(
-  df_sets,
-  intersect            = names(sets_list),
-  width_ratio          = 0.1,
-  sort_sets            = "descending",     # replaces order_sets_by
-  sort_intersections_by= "cardinality",    # replaces order_intersections_by
-  )
-
-p
-
-# save to file
-ggsave(
-  filename = "UpSet_all_except_elite_healthy_complex.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 14,
-  height   = 6
-)
-```
-
-### Include elite controllers
-
-```{r}
-sets_list <- list(
-  SII_up   = sii_healthy_sig_up$Feature,
-  SII_down = sii_healthy_sig_down$Feature,
-  SII_ns = sii_healthy_de_res$Feature[sii_healthy_de_res$adj.P.Val > 0.05],
-  MPI_up   = mpi_healthy_sig_up$Feature,
-  MPI_down = mpi_healthy_sig_down$Feature,
-  MPI_ns = mpi_healthy_de_res$Feature[mpi_healthy_de_res$adj.P.Val > 0.05],
-  PHI_up   = phi_healthy_sig_up$Feature,
-  PHI_down = phi_healthy_sig_down$Feature,
-  PHI_ns = phi_healthy_de_res$Feature[phi_healthy_de_res$adj.P.Val > 0.05],
-  EC_up    = ec_healthy_sig_up$Feature,
-  EC_down  = ec_healthy_sig_down$Feature,
-  EC_ns    = ec_healthy_de_res$Feature[ec_healthy_de_res$adj.P.Val > 0.05]
-)
-
-df_sets <- fromList(sets_list)
-
-p <- ComplexUpset::upset(
-  df_sets,
-  intersect            = names(sets_list),
-  width_ratio          = 0.1,
-  sort_sets            = "descending",     # replaces order_sets_by
-  sort_intersections_by= "cardinality",    # replaces order_intersections_by
-  )
-
-p
-
-# save to file
-ggsave(
-  filename = "UpSet_all_including_ns.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 14,
-  height   = 6
-)
-```
-
-
-```{r}
-sets_list <- list(
-  SII_up   = sii_healthy_sig_up$Feature,
-  SII_down = sii_healthy_sig_down$Feature,
-  MPI_up   = mpi_healthy_sig_up$Feature,
-  MPI_down = mpi_healthy_sig_down$Feature,
-  PHI_up   = phi_healthy_sig_up$Feature,
-  PHI_down = phi_healthy_sig_down$Feature,
-  EC_up    = ec_healthy_sig_up$Feature,
-  EC_down  = ec_healthy_sig_down$Feature,
-  EC_ns    = ec_healthy_de_res$Feature[ec_healthy_de_res$adj.P.Val > 0.05]
-)
-
-df_sets <- fromList(sets_list)
-
-p <- ComplexUpset::upset(
-  df_sets,
-  intersect            = names(sets_list),
-  width_ratio          = 0.1,
-  sort_sets            = "descending",     # replaces order_sets_by
-  sort_intersections_by= "cardinality",    # replaces order_intersections_by
-  )
-
-p
-
-# save to file
-ggsave(
-  filename = "UpSet_all_elite_controllers.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 14,
-  height   = 6
-)
-```
-
-# Biological pathways
-
-## Upregulated
-
-```{r}
-# 1) pull out each “significant up” vector
-sii_up <- sii_healthy_de_res %>%
-  filter(logFC   >  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-mpi_up <- mpi_healthy_de_res %>%
-  filter(logFC   >  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-phi_up <- phi_healthy_de_res %>%
-  filter(logFC   >  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-ec_ns  <- ec_healthy_de_res %>%
-  filter(adj.P.Val >  0.05) %>%
-  pull(Feature)
-
-# 2) intersect all four
-proteins <- list(sii_up, mpi_up, phi_up, ec_ns) %>%
-  reduce(intersect)
-
-# proteins is now a character vector of Features upregulated & significant in ALL four comparisons
-length(proteins)  # how many overlap?
-proteins  
-```
-
-```{r}
-enrichment <- hd_ora(proteins, database = "GO", ontology = "BP")
-
-enrichment_plots <- hd_plot_ora(enrichment)
-```
-
-```{r}
-enrichment_plots$dotplot
-ggsave(
-  filename = "results/figures/figure 2/dotplot_upregulated_proteins.pdf",
-  plot     = enrichment_plots$dotplot,
+  filename = "Volcano plot HIV FU baseline.pdf",
+  path     = "../plots/pdf/volcano/",
   width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot HIV vs FU baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+# Other cohorts vs. Healthy
+
+## Cardiovascular vs. Healthy
+
+```{r}
+input_metadata <- metadata |>
+  bind_rows(hdba_metadata) |>
+  filter(Class %in% c("Cardiovascular", "Healthy")) |> 
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  bind_rows(hdba_data) |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Class", 
+                          case = "Cardiovascular", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+cvd_healthy_res <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p_volcano_cvd_healthy <- p
+
+p_volcano_cvd_healthy
+
+ggsave(
+  filename = "Volcano plot cvd vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano plot cvd vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
   height   = 7)
 ```
 
+## Metabolic vs. Healthy
 
 ```{r}
-enrichment_plots$treeplot
+input_metadata <- metadata |>
+  bind_rows(hdba_metadata) |>
+  filter(Class %in% c("Metabolic", "Healthy")) |> 
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  bind_rows(hdba_data) |>
+  filter(DAid %in% input_metadata$DAid)
 ```
 
 ```{r}
-enrichment_plots$cnetplot
-```
-
-## Downregulated
-
-```{r}
-# 1) pull out each “significant up” vector
-sii_down <- sii_healthy_de_res %>%
-  filter(logFC   <  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-mpi_down <- mpi_healthy_de_res %>%
-  filter(logFC   <  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-phi_down <- phi_healthy_de_res %>%
-  filter(logFC   <  0,
-         adj.P.Val <  0.05) %>%
-  pull(Feature)
-
-ec_ns  <- ec_healthy_de_res %>%
-  filter(adj.P.Val >  0.05) %>%
-  pull(Feature)
-
-# 2) intersect all four
-proteins_down <- list(sii_down, mpi_down, phi_down, ec_ns) %>%
-  purrr::reduce(intersect)
-
-# proteins is now a character vector of Features upregulated & significant in ALL four comparisons
-length(proteins_down)  # how many overlap?
-proteins_down
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
 ```
 
 ```{r}
-enrichment_down <- hd_ora(proteins_down, database = "GO", ontology = "BP")
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Class", 
+                          case = "Metabolic", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
 
-enrichment_plots <- hd_plot_ora(enrichment_down)
+head(de_results$de_res)
 
-enrichment_plots$dotplot
+met_healthy_res <- de_results$de_res
 ```
 
 ```{r}
-enrichment_plots$treeplot
-```
-
-```{r}
-enrichment_plots$cnetplot
-```
-
-# Boxplot examples
-
-```{r}
-proteins
-```
-
-```{r}
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-```
-
-
-```{r}
-# install.packages(c("ggbeeswarm","dplyr","ggplot2"))
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)
-
-# your proteins vector
-# proteins <- c("CXCL13", "ICAM3", "CD6", "NOS3", ...)
-
-# layout params
-plots_per_page <- 12
-n_cols         <- 4
-n_rows         <- 3
-n_pages        <- ceiling(length(proteins) / plots_per_page)
-
-# open PDF
-pdf("results/figures/figure 2/boxplots_all_up_proteins.pdf",
-    width = 7, height = 7)
-
-for(page in seq_len(n_pages)) {
-  
-  # which proteins on this page?
-  start_idx <- (page - 1) * plots_per_page + 1
-  end_idx   <- min(page * plots_per_page, length(proteins))
-  prot_page <- proteins[start_idx:end_idx]
-  
-  # fetch & filter your data
-  df_page <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(metadata %>% filter(Timepoint != "Follow-up"),
-             by = "DAid") %>%
-  filter(Assay   %in% prot_page,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = prot_page),
-    Subcategory = factor(Subcategory, levels = desired_order)
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
   )
-  
-  # if for some reason there's no data, skip
-  if(nrow(df_page) == 0) next
-  
-  # build the plot for this slice
-  p <- ggplot(df_page,
-              aes(x = Subcategory,
-                  y = NPX,
-                  color = Subcategory,
-                  fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black",
-                 outlier.shape = NA,
-                 alpha = 0.7) +
-    facet_wrap(~ Assay,
-               ncol   = n_cols,
-               nrow   = n_rows,
-               scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = sprintf("Protein boxplots (page %d of %d)", page, n_pages),
-      x     = "Cohort",
-      y     = "NPX"
-    )
-  
-  print(p)
-}
 
-dev.off()
-```
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
 
-## Upregulated examples
+p_volcano_met_healthy <- p
 
-```{r}
-# Boxplot example of "PDCD1", "VCAM1", "SH2D1A", "IL32"
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)  # for geom_quasirandom
+p_volcano_met_healthy
 
-# define the four proteins
-highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_up)
-
-# optionally save to PDF
 ggsave(
-  filename = "boxplot_PDCD1_VCAM1_SH2D1A_IL32.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 8,
-  height   = 6
-)
+  filename = "Volcano plot met vs healthy.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
 
-```
-
-```{r}
-highlighted_proteins <- c("IL10", "FOLR3", "GZMA", "GZMB")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_up)
-```
-
-```{r}
-highlighted_proteins <- c("LAG3", "DDX58", "SERPINA9", "APOH")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_up)
-```
-
-
-```{r}
-# Boxplot example of "PDCD1", "VCAM1", "SH2D1A", "IL32"
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)  # for geom_quasirandom
-
-# define the four proteins
-highlighted_proteins <- c("PDCD1", "VCAM1", "SH2D1A", "IL32")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_up)
-
-# optionally save to PDF
 ggsave(
-  filename = "boxplot_PDCD1_VCAM1_SH2D1A_IL32.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 8,
-  height   = 6
-)
-
+  filename = "Volcano plot met vs healthy.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
 ```
 
-## Downregulated examples
+# Other cohorts vs. HDBA
+
+## CVD
 
 ```{r}
-# Boxplot example of "PDCD1", "VCAM1", "SH2D1A", "IL32"
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)  # for geom_quasirandom
+input_metadata <- hdba_metadata_all |>
+  mutate(Comparison = case_when(Class == "Cardiovascular" ~ "Cardiovascular",
+                                TRUE ~ "Other"))
 
-# define the four proteins
-highlighted_proteins <- c("KIT", "CLSTN2", "OBP2B", "CBLN4")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_down <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_down)
-
-# optionally save to PDF
-ggsave(
-  filename = "boxplot_KIT_CLSTN2_OBP2B_CBLN4.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 8,
-  height   = 6
-)
-
+input_data <- hdba_data_all |>
+  filter(DAid %in% input_metadata$DAid)
 ```
-
-```{r , fig.width=14, fig.height=7}
-# Combine them (two columns)
-p_combined <- p_up + p_down + 
-  plot_layout(ncol = 2)
-
-# Save to a single‐page PDF
-ggsave(
-  filename = "boxplot_PDCD1_VCAM1_SH2D1A_IL32_KIT_CLSTN2_OBP2B_CBLN4.pdf",
-  plot     = p_combined,
-  path     = "results/figures/figure 2/",
-  width    = 14,
-  height   = 7
-)
-```
-
-## Selected
 
 ```{r}
-# Boxplot example of "PDCD1", "VCAM1", "SH2D1A", "IL32"
-library(dplyr)
-library(ggplot2)
-library(ggbeeswarm)  # for geom_quasirandom
-
-# define the four proteins
-highlighted_proteins <- c("CXCL13", "NOS3", "CRTAM", "CXCL11")
-
-# define the desired cohort order
-desired_order <- c(
-  "Primary HIV Infection",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Elite Controller",
-  "Healthy"
-)
-
-# build & save the plot
-p_up <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
-  right_join(
-    metadata %>% filter(Timepoint != "Follow-up"),
-    by = "DAid"
-  ) %>%
-  dplyr::filter(Assay %in% highlighted_proteins,
-         Subcategory %in% desired_order) %>%
-  mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
-    Subcategory = factor(Subcategory, levels = desired_order)
-  ) %>%
-  ggplot(aes(x = Subcategory, y = NPX, color = Subcategory, fill = Subcategory)) +
-    geom_quasirandom(alpha = 0.7, show.legend = FALSE) +
-    geom_boxplot(color = "black", outlier.shape = NA, alpha = 0.6) +
-    facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
-    theme_classic() +
-    theme(
-      axis.text.x    = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
-    ) +
-    labs(
-      title = "Expression of Selected Proteins by Cohort",
-      x     = "Cohort",
-      y     = "NPX"
-    )
-
-# display in R
-print(p_up)
-
-# optionally save to PDF
-ggsave(
-  filename = "boxplot_PDCD1_VCAM1_SH2D1A_IL32.pdf",
-  plot     = p,
-  path     = "results/figures/figure 2/",
-  width    = 8,
-  height   = 6
-)
-
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
 ```
-
-
-
-
-# Show all boxplots
 
 ```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "Cardiovascular", 
+                          control = "Other", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
 
+head(de_results$de_res)
+
+cvd_hdba_res <- de_results$de_res
 ```
 
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
 
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
 
+p_volcano_cvd_hdba <- p
 
+p_volcano_cvd_hdba
 
+ggsave(
+  filename = "Volcano plot cvd vs hdba.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
 
+ggsave(
+  filename = "Volcano plot cvd vs hdba.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
 
+## Met
 
+```{r}
+input_metadata <- hdba_metadata_all |>
+  mutate(Comparison = case_when(Class == "Metabolic" ~ "Metabolic",
+                                TRUE ~ "Other"))
 
+input_data <- hdba_data_all |>
+  filter(DAid %in% input_metadata$DAid)
+```
 
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
 
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "Metabolic", 
+                          control = "Other", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
 
+head(de_results$de_res)
 
+met_hdba_res <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p_volcano_met_hdba <- p
+
+p_volcano_met_hdba
+
+ggsave(
+  filename = "Volcano plot met vs hdba.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot met vs hdba.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
 
