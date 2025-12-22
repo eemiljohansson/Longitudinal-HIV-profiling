@@ -1807,3 +1807,282 @@ ggsave(
   height   = 10)
 ```
 
+# Treatment (paired)
+
+## INSTI + Abacavir
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Abacavir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instiaa_fu_baseline <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot insti fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## INSTI + Tenofovir
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Tenofovir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instite_fu_baseline <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instite_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## NNRTI + Tenofovir
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "NNRTI + Tenofovir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("BMI"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_nnrtite_fu_baseline <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_nnrtite_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Combine volcano plots
+
+```{r}
+p_volcano_instiaa_fu_baseline + ggtitle("INSTI + Abacavir") + theme(legend.position = "none") +
+  p_volcano_instite_fu_baseline + ggtitle("INSTI + Tenofovir") + theme(legend.position = "none") +
+  p_volcano_nnrtite_fu_baseline + ggtitle("NNRTI + Tenofovir") + theme(legend.position = "none") +
+  plot_layout(ncol = 3)
+
+ggsave(
+  filename = "Volcano plots Treatment FU Baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 20,
+  height = 7) 
+```
+
+# Comparing treatment to Elite controllers
+
+
+
+
+
+
+
+
+
