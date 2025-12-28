@@ -834,11 +834,326 @@ p_pca_treatment_timepoint <- ggplot(
 p_pca_treatment_timepoint
 ```
 
-```{r}
+### Including Healthy
 
+```{r}
+input_metadata <- metadata |>
+  filter(Subcategory != "Elite Controller")
+
+input_df <- data_wide |> 
+  filter(DAid %in% input_metadata$DAid)
 ```
 
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
 
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# ---------------------------
+# Define treatment panels
+# ---------------------------
+treatment_panels <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Prepare PCA plotting data
+# ---------------------------
+plot_df <- pca_df$pca_res |>
+  inner_join(input_metadata, by = "DAid") |>
+  mutate(
+    ID = as.character(ID),
+    Facet_group = Treatment
+  ) |>
+  # keep treatments of interest + Healthy
+  filter(
+    Treatment %in% treatment_panels |
+      Subcategory == "Healthy"
+  )
+
+# ---------------------------
+# Duplicate Healthy into all treatment panes
+# ---------------------------
+healthy_df <- plot_df |>
+  filter(Subcategory == "Healthy") |>
+  select(-Facet_group) |>
+  expand_grid(Facet_group = treatment_panels)
+
+plot_df <- plot_df |>
+  filter(Subcategory != "Healthy") |>
+  bind_rows(healthy_df)
+
+plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
+
+# ---------------------------
+# PCA variance
+# ---------------------------
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_pca_treatment_timepoint <- ggplot(
+  plot_df,
+  aes(x = PC1, y = PC2)
+) +
+
+  # ---- Filled ellipses by Timepoint (per facet) ----
+  stat_ellipse(
+    aes(
+      fill  = Timepoint,
+      group = interaction(Timepoint, Facet_group)
+    ),
+    geom   = "polygon",
+    alpha  = 0.2,
+    colour = NA
+  ) +
+
+  # ---- Dashed ellipse outlines ----
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+      group  = interaction(Timepoint, Facet_group)
+    ),
+    linetype  = "dashed",
+    linewidth = 0.6
+  ) +
+
+  # ---- Paired baseline → follow-up lines (HIV only) ----
+  geom_line(
+    data = plot_df |>
+      filter(
+        Subcategory != "Healthy",
+        Timepoint %in% c("Baseline", "Follow-up")
+      ),
+    aes(group = interaction(ID, Facet_group)),
+    colour = "grey80",
+    alpha  = 0.5
+  ) +
+
+  # ---- Points ----
+  geom_point(
+    aes(color = Timepoint, shape = Timepoint),
+    size  = 3,
+    alpha = 0.8
+  ) +
+
+  facet_wrap(~ Facet_group, ncol = 1) +
+
+  # ---- Reference axes ----
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+
+  labs(
+    title = "PCA of HIV samples by treatment regimen (Healthy shown in all panels)",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Timepoint",
+    fill  = "Timepoint",
+    shape = "Timepoint"
+  ) +
+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1")
+
+p_pca_treatment_timepoint + coord_equal()
+
+ggsave(
+  filename = "pca_treatment_timepoint_facets_hiv_healthy.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "pca_treatment_timepoint_facets_hiv_healthy.png",
+  path     = "../plots/png/pca/",
+  width    = 7,
+  height   = 10)
+```
+
+### Including EC
+
+```{r}
+# Exclude Elite Controllers from PCA calculation
+input_metadata <- metadata |>
+  dplyr::filter(Subcategory != "Healthy")
+
+input_df <- data_wide |> 
+  dplyr::filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# ---------------------------
+# Define treatment panels
+# ---------------------------
+treatment_panels <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+timepoint_colors <- c(
+  "Baseline"         = "#E94849",  # red
+  "Follow-up"        = "#5F98C6",  # blue
+  "Elite Controller" = "#009E73"   # green
+)
+
+
+# ---------------------------
+# Prepare PCA plotting data
+# ---------------------------
+plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    ID = as.character(ID),
+    Facet_group = Treatment,
+    # 🔑 FIX: collapse Elite Controllers into a single pseudo-timepoint
+    Timepoint = ifelse(Subcategory == "Elite Controller",
+                       "Elite Controller",
+                       Timepoint)
+  ) |>
+  # keep treatments of interest + Elite Controllers
+  filter(
+    Treatment %in% treatment_panels |
+      Subcategory == "Elite Controller"
+  )
+
+# ---------------------------
+# Duplicate Elite Controllers into all treatment panes
+# ---------------------------
+ec_df <- plot_df |>
+  filter(Subcategory == "Elite Controller") |>
+  select(-Facet_group) |>
+  expand_grid(Facet_group = treatment_panels)
+
+plot_df <- plot_df |>
+  filter(Subcategory != "Elite Controller") |>
+  bind_rows(ec_df)
+
+plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
+
+# ---------------------------
+# PCA variance
+# ---------------------------
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_pca_treatment_timepoint <- ggplot(
+  plot_df,
+  aes(x = PC1, y = PC2)
+) +
+
+  # ---- Filled ellipses by group ----
+  stat_ellipse(
+    aes(
+      fill  = Timepoint,
+      group = interaction(Timepoint, Facet_group)
+    ),
+    geom   = "polygon",
+    alpha  = 0.2,
+    colour = NA
+  ) +
+
+  # ---- Dashed ellipse outlines ----
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+      group  = interaction(Timepoint, Facet_group)
+    ),
+    linetype  = "dashed",
+    linewidth = 0.6
+  ) +
+
+  # ---- Paired baseline → follow-up lines (HIV only) ----
+  geom_line(
+    data = plot_df |>
+      filter(
+        Subcategory != "Elite Controller",
+        Timepoint %in% c("Baseline", "Follow-up")
+      ),
+    aes(group = interaction(ID, Facet_group)),
+    colour = "grey80",
+    alpha  = 0.5
+  ) +
+
+  # ---- Points ----
+  geom_point(
+    aes(color = Timepoint, shape = Timepoint),
+    size  = 3,
+    alpha = 0.8
+  ) +
+
+  facet_wrap(~ Facet_group, ncol = 1) +
+
+  # ---- Reference axes ----
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+
+  labs(
+    title = "PCA of HIV samples by treatment regimen",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Group",
+    fill  = "Group",
+    shape = "Group"
+  ) +
+
+  theme_minimal() +
+  scale_color_manual(values = timepoint_colors) +
+  scale_fill_manual(values  = timepoint_colors) +
+  coord_equal()
+
+p_pca_treatment_timepoint
+```
+
+```{r}
+ggsave(
+  filename = "pca_treatment_timepoint_facets_hiv_elite_controller.pdf",
+  path     = "../plots/pdf/pca/",
+  plot     = p_pca_treatment_timepoint,
+  width    = 7,
+  height   = 10
+)
+
+ggsave(
+  filename = "pca_treatment_timepoint_facets_hiv_elite_controller.png",
+  path     = "../plots/png/pca/",
+  plot     = p_pca_treatment_timepoint,
+  width    = 7,
+  height   = 10
+)
+```
 
 
 ### UMAP
