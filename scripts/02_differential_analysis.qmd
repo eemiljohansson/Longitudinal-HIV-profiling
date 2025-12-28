@@ -1091,6 +1091,8 @@ de_results <- hd_de_limma_paired(hd_obj,
                   user_defined_proteins = NULL)
 
 head(de_results$de_res)
+
+res_primary_paired <- de_results$de_res
 ```
 
 ```{r}
@@ -1173,6 +1175,8 @@ de_results <- hd_de_limma_paired(hd_obj,
                   user_defined_proteins = NULL)
 
 head(de_results$de_res)
+
+res_preserved_paired <- de_results$de_res
 ```
 
 ```{r}
@@ -1255,6 +1259,8 @@ de_results <- hd_de_limma_paired(hd_obj,
                   user_defined_proteins = NULL)
 
 head(de_results$de_res)
+
+res_severely_paired <- de_results$de_res
 ```
 
 ```{r}
