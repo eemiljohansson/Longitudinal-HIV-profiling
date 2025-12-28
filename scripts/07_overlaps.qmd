@@ -521,8 +521,104 @@ ggsave(
 ```
 
 
+# Follow-up vs. baseline
 
+```{r}
+#install.packages("ggvenn")  # run once if needed
+library(ggvenn)
+library(dplyr)
 
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.25
+
+venn_sets <- list(
+  "Primary HIV-1 infection" =
+    res_primary_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "More preserved immunity" =
+    res_preserved_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "Severely impaired immunity" =
+    res_severely_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature)
+)
+
+plot_overlap_treatment <- ggvenn(
+  venn_sets,
+  show_elements = FALSE,      # 🔑 prints protein names
+  set_name_size = 5,
+  text_size     = 3
+) +
+  ggtitle("Overlap of differentially abundant proteins\n(Follow-up vs Baseline by subgroup)")
+
+plot_overlap_treatment
+
+ggsave(
+  "../plots/pdf/overlap/venn_fu_baseline_overlap.pdf",
+  width = 10,
+  height = 8
+)
+
+ggsave(
+  "../plots/png/overlap/venn_fu_baseline_overlap.png",
+  width = 10,
+  height = 8
+)
+
+```
+
+```{r}
+#install.packages("ggvenn")  # run once if needed
+library(ggvenn)
+library(dplyr)
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.0
+
+venn_sets <- list(
+  "Primary HIV-1 infection" =
+    res_primary_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "More preserved immunity" =
+    res_preserved_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "Severely impaired immunity" =
+    res_severely_paired |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature)
+)
+
+plot_overlap_treatment <- ggvenn(
+  venn_sets,
+  show_elements = FALSE,      # 🔑 prints protein names
+  set_name_size = 5,
+  text_size     = 3
+) +
+  ggtitle("Overlap of differentially abundant proteins\n(Follow-up vs Baseline by subgroup)")
+
+plot_overlap_treatment
+
+ggsave(
+  "../plots/pdf/overlap/venn_fu_baseline_overlap0.pdf",
+  width = 10,
+  height = 8
+)
+
+ggsave(
+  "../plots/png/overlap/venn_fu_baseline_overlap0.png",
+  width = 10,
+  height = 8
+)
+```
 
 
 
