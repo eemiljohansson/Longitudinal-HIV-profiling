@@ -620,7 +620,53 @@ ggsave(
 )
 ```
 
+# Comparison treatment vs. healthy
 
+```{r}
+#install.packages("ggvenn")  # run once if needed
+library(ggvenn)
+library(dplyr)
 
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.25
 
+venn_sets <- list(
+  "INSTI + Abacavir" =
+    res_instiaa_fu_healthy |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "INSTI + Tenofovir" =
+    res_instite_fu_healthy |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "NNRTI + Tenofovir" =
+    res_nnrtite_fu_healthy |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature)
+)
+
+plot_overlap_treatment_healthy <- ggvenn(
+  venn_sets,
+  show_elements = FALSE,      # 🔑 prints protein names
+  set_name_size = 5,
+  text_size     = 3
+) +
+  ggtitle("Overlap of differentially abundant proteins\n(Follow-up vs Baseline by ART regimen)")
+
+plot_overlap_treatment_healthy
+
+ggsave(
+  "../plots/pdf/overlap/venn_treatment_healthy_overlap.pdf",
+  width = 10,
+  height = 8
+)
+
+ggsave(
+  "../plots/png/overlap/venn_treatment_healthy_overlap.png",
+  width = 10,
+  height = 8
+)
+```
 
