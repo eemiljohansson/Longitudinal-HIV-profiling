@@ -612,6 +612,19 @@ ggsave("../plots/pdf/bar/stacked_bar_treatment_combinations.pdf", width = 10, he
 ggsave("../plots/png/bar/stacked_bar_treatment_combinations.png", width = 10, height = 7)
 ```
 
+# Counting HIV RNA copies
+
+```{r}
+metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) |>
+  select(ID, Subcategory, `HIV-RNA (baseline)`, `HIV-RNA (follow-up)`) %>%
+  summarise(
+    baseline_undetectable = sum(`HIV-RNA (baseline)` < 20, na.rm = TRUE),
+    followup_undetectable = sum(`HIV-RNA (follow-up)` < 20, na.rm = TRUE)
+  )
+```
+
 # SessionInfo
 
 ```{r}
