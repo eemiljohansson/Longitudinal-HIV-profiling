@@ -625,6 +625,372 @@ metadata %>%
   )
 ```
 
+# Table 1
+
+```{r}
+library(table1)
+
+library(MatchIt)
+data(lalonde)
+
+lalonde
+
+lalonde$treat    <- factor(lalonde$treat, levels=c(0, 1), labels=c("Control", "Treatment"))
+lalonde$married  <- as.logical(lalonde$married == 1)
+lalonde$nodegree <- as.logical(lalonde$nodegree == 1)
+lalonde$race     <- factor(lalonde$race, levels=c("white", "black", "hispan"),
+                                         labels=c("White", "Black", "Hispanic"))
+
+label(lalonde$race)     <- "Race"
+label(lalonde$married)  <- "Married"
+label(lalonde$nodegree) <- "No high school diploma"
+label(lalonde$age)      <- "Age"
+label(lalonde$re74)     <- "1974 Income"
+label(lalonde$re75)     <- "1975 Income"
+label(lalonde$re78)     <- "1978 Income"
+units(lalonde$age)      <- "years"
+
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+
+table1(~ age + race + married + nodegree + re74 + re75 + re78 | treat,
+    data=lalonde, overall=F, extra.col=list(`P-value`=pvalue))
+```
+
+```{r}
+metadata |>
+  filter(Disease == "HIV") |>
+  filter(Timepoint== "Baseline") |>
+  select(ID, Subcategory, Sex, `Age (baseline)`, `CD4/CD8 ratio (baseline)`)
+```
+
+```{r}
+library(dplyr)
+library(gt)
+library(tidyr)
+
+# ---------------------------
+# Prepare Table 1 data
+# ---------------------------
+table1_df <- metadata |>
+  filter(
+    Disease == "HIV",
+    Timepoint == "Baseline"
+  ) |>
+  select(
+    ID,
+    Subcategory,
+    Sex,
+    Age = `Age (baseline)`,
+    CD4_CD8 = `CD4/CD8 ratio (baseline)`
+  ) |>
+  distinct(ID, .keep_all = TRUE)
+
+# ---------------------------
+# Helper summaries
+# ---------------------------
+summary_df <- table1_df |>
+  group_by(Subcategory) |>
+  summarise(
+    N = n(),
+    `Female, n (%)` = paste0(
+      sum(Sex == "Female", na.rm = TRUE),
+      " (",
+      round(100 * mean(Sex == "Female", na.rm = TRUE), 1),
+      ")"
+    ),
+    `Male, n (%)` = paste0(
+      sum(Sex == "Male", na.rm = TRUE),
+      " (",
+      round(100 * mean(Sex == "Male", na.rm = TRUE), 1),
+      ")"
+    ),
+    `Age, median (IQR)` = paste0(
+      round(median(Age, na.rm = TRUE), 1),
+      " (",
+      round(quantile(Age, 0.25, na.rm = TRUE), 1),
+      "–",
+      round(quantile(Age, 0.75, na.rm = TRUE), 1),
+      ")"
+    ),
+    `CD4/CD8, median (IQR)` = paste0(
+      round(median(CD4_CD8, na.rm = TRUE), 2),
+      " (",
+      round(quantile(CD4_CD8, 0.25, na.rm = TRUE), 2),
+      "–",
+      round(quantile(CD4_CD8, 0.75, na.rm = TRUE), 2),
+      ")"
+    ),
+    .groups = "drop"
+  )
+
+# ---------------------------
+# Create gt table
+# ---------------------------
+table1_gt <- summary_df |>
+  gt(rowname_col = "Subcategory") |>
+  tab_header(
+    title = "Table 1. Baseline characteristics of HIV cohort",
+    subtitle = "Stratified by HIV-1 disease subcategory"
+  ) |>
+  cols_align(
+    align = "center",
+    everything()
+  ) |>
+  cols_align(
+    align = "left",
+    stub()
+  ) |>
+  tab_stubhead(label = "Subcategory") |>
+  tab_source_note(
+    source_note = "Values are median (IQR) unless otherwise stated."
+  ) |>
+  opt_all_caps() |>
+  opt_table_outline() |>
+  opt_all_caps() |>
+  tab_options(
+    table.font.size = px(13),
+    heading.title.font.size = px(16),
+    heading.subtitle.font.size = px(13)
+  )
+
+table1_gt
+
+```
+
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(gt)
+library(stringr)
+library(openxlsx)
+
+# ---------------------------
+# Prepare HIV data
+# ---------------------------
+table1_df <- metadata |>
+  filter(Disease == "HIV") |>
+  mutate(
+    Subcategory = factor(
+      Subcategory,
+      levels = c(
+        "Primary HIV Infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite Controller"
+      )
+    )
+  ) |>
+  mutate(
+    NNRTI = if_else(ART == "NNRTI", "Yes", "No"),
+    INSTI = if_else(ART == "INSTI", "Yes", "No"),
+    `Other ART` = if_else(!ART %in% c("NNRTI", "INSTI"), "Yes", "No"),
+    Abacavir = if_else(str_detect(tolower(`Backbone 2`), "abacavir"), "Yes", "No"),
+    Tenofovir = if_else(str_detect(tolower(`Backbone 2`), "tenofovir"), "Yes", "No"),
+    `Other backbone` = if_else(
+      is.na(`Backbone 2`) | str_detect(tolower(`Backbone 2`), "abacavir|tenofovir"),
+      "No", "Yes"
+    ),
+    `HIV-RNA (baseline)`  = log10(`HIV-RNA (baseline)` + 1),
+    `HIV-RNA (follow-up)` = log10(`HIV-RNA (follow-up)` + 1)
+  ) |>
+  select(
+    ID, Subcategory, Sex,
+    Age_bl  = `Age (baseline)`,
+    BMI_bl  = `BMI (baseline)`,
+    CD4_bl  = `CD4 cell count (baseline)`,
+    CD4CD8_bl = `CD4/CD8 ratio (baseline)`,
+    HIVRNA_bl = `HIV-RNA (baseline)`,
+
+    Age_fu  = `Age (follow-up)`,
+    BMI_fu  = `BMI (follow-up)`,
+    CD4_fu  = `CD4 cell count (follow-up)`,
+    CD4CD8_fu = `CD4/CD8 ratio (follow-up)`,
+    HIVRNA_fu = `HIV-RNA (follow-up)`,
+
+    `Months on treatment`,
+    NNRTI, INSTI, `Other ART`,
+    Abacavir, Tenofovir, `Other backbone`
+  ) |>
+  distinct(ID, .keep_all = TRUE)
+
+# ---------------------------
+# Helper test functions (FIXED)
+# ---------------------------
+kw <- function(df, var) {
+  tryCatch(
+    kruskal.test(df[[var]] ~ df$Subcategory)$p.value,
+    error = function(e) NA_real_
+  )
+}
+
+fisher <- function(df, var) {
+  tryCatch(
+    fisher.test(table(df[[var]], df$Subcategory))$p.value,
+    error = function(e) NA_real_
+  )
+}
+
+# ---------------------------
+# P-values
+# ---------------------------
+pvals <- tibble(
+  Variable = c(
+    "N",
+    "Female, n (%)",
+    "Male, n (%)",
+    "Age (baseline), median (IQR)",
+    "BMI (baseline), median (IQR)",
+    "CD4 count (baseline), median (IQR)",
+    "CD4/CD8 ratio (baseline), median (IQR)",
+    "HIV RNA (baseline, log10), median (IQR)",
+    "Age (follow-up), median (IQR)",
+    "BMI (follow-up), median (IQR)",
+    "CD4 count (follow-up), median (IQR)",
+    "CD4/CD8 ratio (follow-up), median (IQR)",
+    "HIV RNA (follow-up, log10), median (IQR)",
+    "Months on treatment, median (IQR)",
+    "NNRTI, n (%)",
+    "INSTI, n (%)",
+    "Other ART, n (%)",
+    "Abacavir, n (%)",
+    "Tenofovir, n (%)",
+    "Other backbone, n (%)"
+  ),
+  `P-value` = c(
+    NA,
+    fisher(table1_df, "Sex"),
+    fisher(table1_df, "Sex"),
+    kw(table1_df, "Age_bl"),
+    kw(table1_df, "BMI_bl"),
+    kw(table1_df, "CD4_bl"),
+    kw(table1_df, "CD4CD8_bl"),
+    kw(table1_df, "HIVRNA_bl"),
+    kw(table1_df, "Age_fu"),
+    kw(table1_df, "BMI_fu"),
+    kw(table1_df, "CD4_fu"),
+    kw(table1_df, "CD4CD8_fu"),
+    kw(table1_df, "HIVRNA_fu"),
+    kw(table1_df, "Months on treatment"),
+    fisher(table1_df, "NNRTI"),
+    fisher(table1_df, "INSTI"),
+    fisher(table1_df, "Other ART"),
+    fisher(table1_df, "Abacavir"),
+    fisher(table1_df, "Tenofovir"),
+    fisher(table1_df, "Other backbone")
+  )
+)
+
+# ---------------------------
+# Summary table (FIXED NA handling)
+# ---------------------------
+summary_long <- table1_df |>
+  group_by(Subcategory) |>
+  summarise(
+    Variable = pvals$Variable,
+    Value = c(
+      n(),
+      paste0(sum(Sex == "F", na.rm = TRUE), " (",
+             round(100 * mean(Sex == "F", na.rm = TRUE), 1), ")"),
+      paste0(sum(Sex == "M", na.rm = TRUE), " (",
+             round(100 * mean(Sex == "M", na.rm = TRUE), 1), ")"),
+
+      paste0(median(Age_bl, na.rm = TRUE), " (",
+             quantile(Age_bl, .25, na.rm = TRUE), "–",
+             quantile(Age_bl, .75, na.rm = TRUE), ")"),
+
+      paste0(median(BMI_bl, na.rm = TRUE), " (",
+             quantile(BMI_bl, .25, na.rm = TRUE), "–",
+             quantile(BMI_bl, .75, na.rm = TRUE), ")"),
+
+      paste0(median(CD4_bl, na.rm = TRUE), " (",
+             quantile(CD4_bl, .25, na.rm = TRUE), "–",
+             quantile(CD4_bl, .75, na.rm = TRUE), ")"),
+
+      paste0(median(CD4CD8_bl, na.rm = TRUE), " (",
+             quantile(CD4CD8_bl, .25, na.rm = TRUE), "–",
+             quantile(CD4CD8_bl, .75, na.rm = TRUE), ")"),
+
+      paste0(median(HIVRNA_bl, na.rm = TRUE), " (",
+             quantile(HIVRNA_bl, .25, na.rm = TRUE), "–",
+             quantile(HIVRNA_bl, .75, na.rm = TRUE), ")"),
+
+      paste0(median(Age_fu, na.rm = TRUE), " (",
+             quantile(Age_fu, .25, na.rm = TRUE), "–",
+             quantile(Age_fu, .75, na.rm = TRUE), ")"),
+
+      paste0(median(BMI_fu, na.rm = TRUE), " (",
+             quantile(BMI_fu, .25, na.rm = TRUE), "–",
+             quantile(BMI_fu, .75, na.rm = TRUE), ")"),
+
+      paste0(median(CD4_fu, na.rm = TRUE), " (",
+             quantile(CD4_fu, .25, na.rm = TRUE), "–",
+             quantile(CD4_fu, .75, na.rm = TRUE), ")"),
+
+      paste0(median(CD4CD8_fu, na.rm = TRUE), " (",
+             quantile(CD4CD8_fu, .25, na.rm = TRUE), "–",
+             quantile(CD4CD8_fu, .75, na.rm = TRUE), ")"),
+
+      paste0(median(HIVRNA_fu, na.rm = TRUE), " (",
+             quantile(HIVRNA_fu, .25, na.rm = TRUE), "–",
+             quantile(HIVRNA_fu, .75, na.rm = TRUE), ")"),
+
+      paste0(median(`Months on treatment`, na.rm = TRUE), " (",
+             quantile(`Months on treatment`, .25, na.rm = TRUE), "–",
+             quantile(`Months on treatment`, .75, na.rm = TRUE), ")"),
+
+      paste0(sum(NNRTI=="Yes")," (",round(100*mean(NNRTI=="Yes"),1),")"),
+      paste0(sum(INSTI=="Yes")," (",round(100*mean(INSTI=="Yes"),1),")"),
+      paste0(sum(`Other ART`=="Yes")," (",round(100*mean(`Other ART`=="Yes"),1),")"),
+      paste0(sum(Abacavir=="Yes")," (",round(100*mean(Abacavir=="Yes"),1),")"),
+      paste0(sum(Tenofovir=="Yes")," (",round(100*mean(Tenofovir=="Yes"),1),")"),
+      paste0(sum(`Other backbone`=="Yes")," (",round(100*mean(`Other backbone`=="Yes"),1),")")
+    ),
+    .groups = "drop"
+  )
+
+# ---------------------------
+# Final table & export
+# ---------------------------
+summary_wide <- summary_long |>
+  pivot_wider(names_from = Subcategory, values_from = Value) |>
+  left_join(pvals, by = "Variable")
+
+table1_gt <- summary_wide |>
+  gt(rowname_col = "Variable") |>
+  tab_header(
+    title = "Table 1. Clinical characteristics of the HIV cohort",
+    subtitle = "Baseline and follow-up measurements stratified by HIV-1 subcategory"
+  ) |>
+  fmt_number(columns = `P-value`, decimals = 3)
+
+table1_gt
+
+write.xlsx(
+  summary_wide,
+  "../tables/Table1_HIV_baseline_followup.xlsx",
+  rowNames = TRUE
+)
+
+```
+
+
 # SessionInfo
 
 ```{r}
