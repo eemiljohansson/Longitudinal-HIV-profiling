@@ -612,6 +612,108 @@ ggsave("../plots/pdf/bar/stacked_bar_treatment_combinations.pdf", width = 10, he
 ggsave("../plots/png/bar/stacked_bar_treatment_combinations.png", width = 10, height = 7)
 ```
 
+## Simplified treatment groups
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# ---------------------------
+# 1. Define factor levels
+# ---------------------------
+treatment_levels <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir",
+  "Untreated",
+  "Other"
+)
+
+subcategory_levels <- c(
+  "Elite Controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV Infection"
+)
+
+# ---------------------------
+# 2. Summarize Treatment by Subcategory
+# ---------------------------
+treatment_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    # Start by handling missing treatments
+    Treatment = if_else(is.na(Treatment), "Other", Treatment),
+
+    # Elite Controllers are always untreated
+    Treatment = if_else(
+      Subcategory == "Elite Controller",
+      "Untreated",
+      Treatment
+    ),
+
+    # Collapse everything else not explicitly listed into "Other"
+    Treatment = if_else(
+      Treatment %in% treatment_levels,
+      Treatment,
+      "Other"
+    ),
+
+    Treatment   = factor(Treatment, levels = treatment_levels),
+    Subcategory = factor(Subcategory, levels = subcategory_levels)
+  ) %>%
+  count(Treatment, Subcategory)
+
+# ---------------------------
+# 3. Stacked barplot
+# ---------------------------
+ggplot(treatment_summary, aes(y = Treatment, x = n, fill = Subcategory)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    size = 5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Elite Controller" = "#1b9e77",
+      "More preserved immunity" = "#d95f02",
+      "Severely impaired immunity" = "#7570b3",
+      "Primary HIV Infection" = "#e7298a"
+    )
+  ) +
+  scale_x_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Subcategory distribution by treatment combination",
+    y = "Treatment combination",
+    fill = "Subcategory"
+  ) +
+  theme_classic(base_size = 14) +
+  theme_hiv() +
+  theme(
+    axis.text.y = element_text(size = 12),
+    legend.position = "top"
+  )
+
+# ---------------------------
+# 4. Save outputs
+# ---------------------------
+ggsave(
+  "../plots/pdf/bar/stacked_bar_treatment_combinations_simple.pdf",
+  width = 10, height = 7
+)
+
+ggsave(
+  "../plots/png/bar/stacked_bar_treatment_combinations_simple.png",
+  width = 10, height = 7
+)
+
+```
+
 # Counting HIV RNA copies
 
 ```{r}
