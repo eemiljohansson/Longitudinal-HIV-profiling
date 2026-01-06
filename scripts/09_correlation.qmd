@@ -177,6 +177,142 @@ ggplot(
 
 ```
 
+#### Unadjusted
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(ggrepel)
+
+# ---------------------------
+# Prepare correlation data
+# ---------------------------
+cor_results <- metadata |>
+  filter(
+    Disease == "HIV",
+    Subcategory != "Elite Controller"
+  ) |>
+  select(
+    DAid,
+    baseline_value = `CD4/CD8 ratio (baseline)`,
+    fu_value       = `CD4/CD8 ratio (follow-up)`
+  ) |>
+  inner_join(data_wide, by = "DAid") |>
+  pivot_longer(
+    cols = -c(DAid, baseline_value, fu_value),
+    names_to = "Feature",
+    values_to = "Protein"
+  ) |>
+  pivot_longer(
+    cols = c(baseline_value, fu_value),
+    names_to = "Timepoint",
+    values_to = "Metadata"
+  ) |>
+  filter(!is.na(Metadata), !is.na(Protein)) |>
+  group_by(Feature, Timepoint) |>
+  summarise(
+    test = list(cor.test(Metadata, Protein, method = "spearman")),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Correlation = map_dbl(test, ~ .x$estimate),
+    pval        = map_dbl(test, ~ .x$p.value),
+    neglog10p   = -log10(pval),
+    Timepoint   = recode(
+      Timepoint,
+      baseline_value = "Baseline",
+      fu_value       = "Follow-up"
+    ),
+    sig_class   = if_else(pval < 0.05, Timepoint, "Not significant")
+  ) |>
+  select(Feature, Timepoint, Correlation, pval, neglog10p, sig_class)
+
+# ---------------------------
+# Label top ± correlations (raw p < 0.05)
+# ---------------------------
+label_df <- cor_results |>
+  filter(pval < 0.05) |>
+  group_by(Timepoint) |>
+  arrange(desc(Correlation)) |>
+  slice_head(n = 10) |>
+  bind_rows(
+    cor_results |>
+      filter(pval < 0.05) |>
+      group_by(Timepoint) |>
+      arrange(Correlation) |>
+      slice_head(n = 10)
+  ) |>
+  ungroup() |>
+  distinct(Feature, .keep_all = TRUE)
+
+# ---------------------------
+# Volcano plot (RAW p-values)
+# ---------------------------
+ggplot(
+  cor_results,
+  aes(x = Correlation, y = neglog10p, color = sig_class)
+) +
+  geom_point(alpha = 0.6, size = 2) +
+
+  # Raw p-value threshold
+  geom_hline(
+    yintercept = -log10(0.05),
+    linetype   = "dashed",
+    colour     = "grey50"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype   = "dashed",
+    colour     = "grey50"
+  ) +
+
+  # Label top ± correlations
+  ggrepel::geom_text_repel(
+    data = label_df,
+    aes(label = Feature),
+    size = 3,
+    max.overlaps = Inf,
+    box.padding = 0.6,
+    point.padding = 0.4,
+    segment.color = "grey60"
+  ) +
+
+  scale_color_manual(
+    values = c(
+      "Baseline"        = "#E94849",
+      "Follow-up"       = "#5F98C6",
+      "Not significant" = "grey75"
+    )
+  ) +
+
+  theme_minimal() +
+  labs(
+    x = "Spearman correlation (rho)",
+    y = "-log10(p-value)",
+    color = "Timepoint",
+    title = "Protein correlations with CD4/CD8 ratio",
+    subtitle = "Raw p-values (no multiple testing correction)"
+  )
+
+ggsave(
+  filename = "Protein correlations with CD4CD8 raw pvalues.png",
+  path     = "../plots/png/correlation/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Protein correlations with CD4CD8 raw pvalues.pdf",
+  path     = "../plots/pdf/correlation/",
+  width    = 10,
+  height   = 7
+)
+```
+
+#### Adjusted
+
 ```{r}
 library(dplyr)
 library(tidyr)
@@ -318,7 +454,8 @@ library(ggrepel)
 # ---------------------------
 delta_df <- metadata |>
   filter(
-    Disease == "HIV"
+    Disease == "HIV",
+    Subcategory != "Elite Controller"
   ) |>
   mutate(ID = as.character(ID)) |>
   select(
@@ -390,6 +527,8 @@ ggplot(
   )
 ```
 
+#### Unadjusted
+
 ```{r}
 library(dplyr)
 library(tidyr)
@@ -426,7 +565,8 @@ delta_df <- metadata |>
 baseline_proteins <- metadata |>
   filter(
     Disease == "HIV",
-    Timepoint == "Baseline"
+    Timepoint == "Baseline",
+    Subcategory != "Elite Controller"
   ) |>
   select(DAid, ID) |>
   mutate(ID = as.character(ID)) |>
@@ -458,9 +598,15 @@ cor_results <- baseline_proteins |>
 # ---------------------------
 # 4. Select top ± correlations for labeling
 # ---------------------------
-label_df <- cor_results |>
-  arrange(desc(abs(Correlation))) |>
+label_df_up <- cor_results |>
+  arrange(desc(Correlation)) |>
   slice_head(n = 10)
+
+label_df_down <- cor_results |>
+  arrange(Correlation) |>
+  slice_head(n = 10)
+
+label_df <- bind_rows(label_df_up, label_df_down)
 
 # ---------------------------
 # 5. Volcano plot (RAW p-values)
@@ -504,6 +650,175 @@ ggplot(
     subtitle = "Δ = Follow-up − Baseline (raw p-values, exploratory)"
   )
 
+ggsave(
+  filename = "Baseline proteins vs delta CD4CD8 raw pvalues.png",
+  path     = "../plots/png/correlation/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Baseline proteins vs delta CD4CD8 raw pvalues.pdf",
+  path     = "../plots/pdf/correlation/",
+  width    = 10,
+  height   = 7
+)
+```
+
+#### Adjusted
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(ggrepel)
+
+# ---------------------------
+# 1. Compute Δ(CD4/CD8) per ID
+# ---------------------------
+delta_df <- metadata |>
+  filter(Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  select(
+    ID,
+    `CD4/CD8 ratio (baseline)`,
+    `CD4/CD8 ratio (follow-up)`
+  ) |>
+  filter(
+    !is.na(`CD4/CD8 ratio (baseline)`),
+    !is.na(`CD4/CD8 ratio (follow-up)`)
+  ) |>
+  distinct() |>
+  mutate(
+    delta_cd4cd8 =
+      `CD4/CD8 ratio (follow-up)` -
+      `CD4/CD8 ratio (baseline)`
+  ) |>
+  select(ID, delta_cd4cd8)
+
+# ---------------------------
+# 2. Extract BASELINE protein samples
+# ---------------------------
+baseline_proteins <- metadata |>
+  filter(
+    Disease == "HIV",
+    Timepoint == "Baseline",
+    Subcategory != "Elite Controller"
+  ) |>
+  select(DAid, ID) |>
+  mutate(ID = as.character(ID)) |>
+  inner_join(data_wide, by = "DAid") |>
+  inner_join(delta_df, by = "ID")
+
+# ---------------------------
+# 3. Correlation analysis (BH-adjusted)
+# ---------------------------
+cor_results <- baseline_proteins |>
+  pivot_longer(
+    cols = -c(DAid, ID, delta_cd4cd8),
+    names_to = "Feature",
+    values_to = "Protein"
+  ) |>
+  filter(!is.na(Protein), !is.na(delta_cd4cd8)) |>
+  group_by(Feature) |>
+  summarise(
+    test = list(cor.test(delta_cd4cd8, Protein, method = "spearman")),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Correlation = map_dbl(test, ~ .x$estimate),
+    pval        = map_dbl(test, ~ .x$p.value)
+  ) |>
+  mutate(
+    adj_pval  = p.adjust(pval, method = "BH"),
+    neglog10q = -log10(adj_pval),
+    sig_class = if_else(adj_pval < 0.05, "FDR < 0.05", "Not significant")
+  )
+
+# ---------------------------
+# 4. Select top ± significant correlations for labeling
+# ---------------------------
+label_df <- cor_results |>
+  filter(adj_pval < 0.05) |>
+  arrange(desc(Correlation)) |>
+  slice_head(n = 10) |>
+  bind_rows(
+    cor_results |>
+      filter(adj_pval < 0.05) |>
+      arrange(Correlation) |>
+      slice_head(n = 10)
+  ) |>
+  distinct(Feature, .keep_all = TRUE)
+
+# ---------------------------
+# 5. Volcano plot (BH-adjusted)
+# ---------------------------
+p <- ggplot(
+  cor_results,
+  aes(x = Correlation, y = neglog10q, color = sig_class)
+) +
+  geom_point(alpha = 0.6, size = 2) +
+
+  # FDR threshold
+  geom_hline(
+    yintercept = -log10(0.05),
+    linetype   = "dashed",
+    colour     = "grey50"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype   = "dashed",
+    colour     = "grey50"
+  ) +
+
+  # Labels
+  ggrepel::geom_text_repel(
+    data = label_df,
+    aes(label = Feature),
+    size = 4,
+    max.overlaps = Inf,
+    box.padding = 0.6,
+    point.padding = 0.4,
+    segment.color = "grey60"
+  ) +
+
+  scale_color_manual(
+    values = c(
+      "FDR < 0.05"      = "#D55E00",
+      "Not significant" = "grey75"
+    )
+  ) +
+
+  theme_hiv() +
+  labs(
+    x = "Spearman correlation with Δ(CD4/CD8)",
+    y = "-log10(FDR-adjusted p-value)",
+    color = NULL,
+    title = "Baseline proteins correlated with change in CD4/CD8 ratio",
+    subtitle = "Δ = Follow-up − Baseline (BH-adjusted, HIV only)"
+  )
+
+print(p)
+
+# ---------------------------
+# 6. Save
+# ---------------------------
+ggsave(
+  filename = "Baseline_proteins_vs_delta_CD4CD8_BH.png",
+  plot     = p,
+  path     = "../plots/png/correlation/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Baseline_proteins_vs_delta_CD4CD8_BH.pdf",
+  plot     = p,
+  path     = "../plots/pdf/correlation/",
+  width    = 10,
+  height   = 7
+)
 ```
 
 
@@ -511,45 +826,142 @@ ggplot(
 
 ```{r}
 scatter_data <- metadata |>
-  filter(Disease == "HIV", Timepoint == "Baseline") |>
-  select(DAid, Age = `Age (baseline)`, Subcategory) |>
+  filter(Disease == "HIV") |>
+  filter(Subcategory != "Elite Controller") |>
+  # Get delta CD4/CD8
+  mutate(
+    delta_cd4cd8 =
+      `CD4/CD8 ratio (follow-up)` -
+      `CD4/CD8 ratio (baseline)`
+  ) |>
+  select(DAid, delta_cd4cd8, Subcategory) |>
   inner_join(data_wide, by = "DAid") |>
-  pivot_longer(-c(DAid, Age, Subcategory), names_to = "Assay", values_to = "Value") |>
-  filter(Assay %in% c("CLEC4C", "TNFRSF13C", "CXCL17", "HAVCR1"))
+  pivot_longer(-c(DAid, delta_cd4cd8, Subcategory), names_to = "Assay", values_to = "Value") |>
+  filter(Assay %in% c("DUOX2", "CXCL13", "BST2", "GZMA", "FCRL2", "SLAMF7"))
 
-ggplot(scatter_data, aes(x = Age, y = Value, color = Subcategory)) +
+ggplot(scatter_data, aes(x = delta_cd4cd8, y = Value, color = Subcategory)) +
   geom_point(alpha = 0.7) +
-  # undergruppslinjer + färgade CI-band
   geom_smooth(method = "lm", se = TRUE, aes(fill = Subcategory), alpha = 0.20) +
-  # svart övergripande lm-linje (utan CI)
   geom_smooth(method = "lm", se = FALSE, color = "black", inherit.aes = FALSE,
-              aes(x = Age, y = Value)) +
+              aes(x = delta_cd4cd8, y = Value)) +
   theme_minimal() +
   labs(
-    x = "Age (baseline)",
+    x = "Delta CD4/CD8 ratio (Follow-up - Baseline)",
     y = "Protein level (NPX)",
     title = "Age vs protein correlations in HIV (Baseline)"
   ) +
-  facet_wrap(~Assay, scales = "free_y") +
-  guides(fill = "none")   # undvik dubbla legender
+  facet_wrap(~Assay, scales = "free_y", ncol = 2) +
+  guides(fill = "none") +
+  theme_hiv()
 
 ```
 
 ```{r}
-plots$`Days since first postitive HIV (baseline)` + ylim(0,10) +
-  plots$`HIV-RNA (baseline)` + ylim(0,10) +
-  plots$`HIV-RNA (follow-up)` + ylim(0,10)
+subcategory_colors <- c(
+  "Primary HIV Infection"      = "#D55E00",
+  "More preserved immunity"    = "#0072B2",
+  "Severely impaired immunity" = "#CC79A7"
+)
 ```
 
 ```{r}
-plots$`CD4 cell count (baseline)` + ylim(0,10) +
-  plots$`CD4 cell count (follow-up)` + ylim(0,10)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+
+scatter_data <- metadata |>
+  filter(
+    Disease == "HIV",
+    Subcategory != "Elite Controller"
+  ) |>
+  mutate(
+    delta_cd4cd8 =
+      `CD4/CD8 ratio (follow-up)` -
+      `CD4/CD8 ratio (baseline)`
+  ) |>
+  select(DAid, delta_cd4cd8, Subcategory) |>
+  inner_join(data_wide, by = "DAid") |>
+  pivot_longer(
+    -c(DAid, delta_cd4cd8, Subcategory),
+    names_to = "Assay",
+    values_to = "Value"
+  ) |>
+  filter(
+    Assay %in% c("DUOX2", "CXCL13", "BST2", "GZMA", "FCRL2", "SLAMF7"),
+    !is.na(delta_cd4cd8),
+    !is.na(Value)
+  )
+
+
+ggplot(
+  scatter_data,
+  aes(x = delta_cd4cd8, y = Value, color = Subcategory)
+) +
+  # Points
+  geom_point(alpha = 0.7, size = 2) +
+
+  # Subgroup-specific regression (colored)
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    aes(fill = Subcategory),
+    alpha = 0.20
+  ) +
+
+  # Overall regression (black)
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.8,
+    inherit.aes = FALSE,
+    aes(x = delta_cd4cd8, y = Value)
+  ) +
+
+  # 🔑 Spearman rho per subgroup (nicely placed)
+  ggpubr::stat_cor(
+    aes(label = paste0("rho = ", ..r.label..)),
+    method = "spearman",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 3,
+    show.legend = FALSE
+  ) +
+
+  facet_wrap(~ Assay, scales = "free_y", ncol = 3) +
+
+  scale_color_manual(values = subcategory_colors) +
+  scale_fill_manual(values = subcategory_colors) +
+
+  theme_minimal() +
+  theme_hiv() +
+  guides(fill = "none") +
+
+  labs(
+    x = "Δ CD4/CD8 ratio (Follow-up − Baseline)",
+    y = "Protein level (NPX)",
+    color = "HIV-1 subgroup",
+    title = "Baseline protein levels vs longitudinal CD4/CD8 change",
+    subtitle = "Colored lines = subgroup-specific trends; black = overall trend"
+  )
+
+ggsave(
+  filename = "Baseline_proteins_vs_delta_CD4CD8_subgroups.png",
+  path     = "../plots/png/scatter/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Baseline_proteins_vs_delta_CD4CD8_subgroups.pdf",
+  path     = "../plots/pdf/scatter/",
+  width    = 10,
+  height   = 7
+)
 ```
 
-```{r}
-plots$`CD4/CD8 ratio (baseline)` + ylim(0,10) +
-  plots$`CD4/CD8 ratio (follow-up)` + ylim(0,10)
-```
 
 # Compare clinical and proteomic markers
 
