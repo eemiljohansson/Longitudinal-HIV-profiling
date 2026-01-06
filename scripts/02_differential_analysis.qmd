@@ -121,7 +121,7 @@ ggsave(
   height   = 7)
 ```
 
-## Grouped HIV-1 (follow-up) vs. Healthy
+## PLWH (follow-up) vs. Healthy
 
 ```{r}
 input_metadata <- metadata |>
@@ -159,7 +159,7 @@ de_results <- hd_de_limma(hd_obj,
 
 head(de_results$de_res)
 
-de_res_hiv_baseline_healthy_fu <- de_results$de_res
+de_res_hiv_fu_healthy <- de_results$de_res
 ```
 
 ```{r}
@@ -1481,14 +1481,14 @@ p_volcano_hiv_fu_baseline <- p
 ggsave(
   filename = "Volcano plot HIV FU baseline.pdf",
   path     = "../plots/pdf/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 
 ggsave(
   filename = "Volcano plot HIV vs FU baseline.png",
   path     = "../plots/png/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 ```
 
 # Other cohorts vs. Healthy
@@ -2157,14 +2157,14 @@ p_volcano_instiaa_fu_healthy <- p
 ggsave(
   filename = "Volcano plot insti fu healthy.pdf",
   path     = "../plots/pdf/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 
 ggsave(
   filename = "Volcano plot insti fu healthy.png",
   path     = "../plots/png/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 ```
 
 ## INSTI + Tenofovir
@@ -2240,14 +2240,14 @@ p_volcano_instite_fu_healthy <- p
 ggsave(
   filename = "Volcano plot insti tenofovir fu healthy.pdf",
   path     = "../plots/pdf/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 
 ggsave(
   filename = "Volcano plot insti tenofovir fu healthy.png",
   path     = "../plots/png/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 ```
 
 ## NNRTI + Tenofovir
@@ -2323,14 +2323,14 @@ p_volcano_nnrtite_fu_healthy <- p
 ggsave(
   filename = "Volcano plot NNRTI + Tenofovir fu healthy.pdf",
   path     = "../plots/pdf/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 
 ggsave(
   filename = "Volcano plot NNRTI + Tenofovir fu healthy.png",
   path     = "../plots/png/volcano/",
-  width    = 7,
-  height   = 10)
+  width    = 10,
+  height   = 7)
 ```
 
 ## Combine volcano plots
@@ -2886,7 +2886,282 @@ p_volcano_instiaa_fu_instite + ggtitle("INSTI + Abacavir") + theme(legend.positi
   plot_layout(ncol = 3)
 
 ggsave(
-  filename = "Volcano plots Treatment direct comparisons ec.pdf",
+  filename = "Volcano plots Treatment direct comparisons with other treatments.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 20,
+  height = 7) 
+```
+
+# 2nd Backbone comparisons
+
+## TDF vs. TAF
+
+```{r}
+input_metadata <- metadata |>
+  filter(`2nd backbone` %in% c("TDF", "TAF") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`2nd backbone` == "TDF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex", "BMI")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_tdf_fu_taf <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_tdf_fu_taf <- p
+
+ggsave(
+  filename = "Volcano plot tdf fu taf.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot tdf fu taf.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+
+# RBP2 is connected to TDF, makes sense, it is affecting the visuals
+# CKMT1A as well
+```
+
+## TDF vs. Abacavir
+
+```{r}
+input_metadata <- metadata |>
+  filter(`2nd backbone` %in% c("TDF", "Abacavir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`2nd backbone` == "TDF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex", "BMI")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_tdf_fu_abacavir <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_tdf_fu_abacavir <- p
+
+ggsave(
+  filename = "Volcano plot tdf fu abacavir.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot tdf fu abacavir.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## TAF vs. Abacavir
+
+```{r}
+input_metadata <- metadata |>
+  filter(`2nd backbone` %in% c("TAF", "Abacavir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`2nd backbone` == "TAF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+```
+
+```{r}
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex", "BMI")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = FALSE,
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_taf_fu_abacavir <- de_results$de_res
+```
+
+```{r}
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_taf_fu_abacavir <- p
+
+ggsave(
+  filename = "Volcano plot taf fu abacavir.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot taf fu abacavir.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Combine volcano plots
+
+```{r}
+p_volcano_tdf_fu_taf + ggtitle("TDF vs. TAF") + theme(legend.position = "none") +
+  p_volcano_tdf_fu_abacavir + ggtitle("TDF vs. Abacavir") + theme(legend.position = "none") +
+  p_volcano_taf_fu_abacavir + ggtitle("TAF vs. Abacavir") + theme(legend.position = "none") +
+  plot_layout(ncol = 3)
+
+ggsave(
+  filename = "Volcano plots Treatment 2nd backbone.pdf",
   path     = "../plots/pdf/volcano/",
   width    = 20,
   height = 7) 
