@@ -1017,7 +1017,7 @@ library(ggplot2)
 library(ggbeeswarm)
 
 highlighted_proteins <- c(
-  "FABP2", "LEP", "IGFBP2", "DGKZ"
+  "FABP2", "LEP", "IGFBP2", "SERPINE1"
 )
 
 # ---------------------------
@@ -1116,7 +1116,7 @@ ggsave(
   plot     = p_up_plot,
   path     = "../plots/pdf/boxplot/",
   width    = 10,
-  height   = 14
+  height   = 7
 )
 
 ggsave(
@@ -1124,9 +1124,170 @@ ggsave(
   plot     = p_up_plot,
   path     = "../plots/png/boxplot/",
   width    = 10,
-  height   = 14
+  height   = 7
 )
 ```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "FABP2", "LEP", "IGFBP2", "CD4"
+)
+
+# ---------------------------
+# Treatments of interest
+# ---------------------------
+treatment_order <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Colors (cohort-level)
+# ---------------------------
+group_colors <- c(
+  "NNRTI + Tenofovir"  = "#D55E00",
+  "INSTI + Tenofovir"  = "#0072B2",
+  "INSTI + Abacavir"   = "#CC79A7",
+  "Healthy"            = "#71BF6E",
+  "Cardiovascular"     = "#FC8D62",
+  "Metabolic"          = "#E5C494",
+  "Elite Controller"   = "#009E73"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  bind_rows(hdba_data_long) |>
+  select(DAid, Assay, NPX) |>
+  inner_join(
+    metadata |> bind_rows(hdba_metadata),
+    by = "DAid"
+  ) |>
+  filter(
+    Assay %in% highlighted_proteins,
+    Treatment %in% treatment_order |
+      Subcategory %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite Controller"
+      )
+  ) |>
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subcategory == "Healthy"          ~ "Healthy",
+      Subcategory == "Cardiovascular"   ~ "Cardiovascular",
+      Subcategory == "Metabolic"        ~ "Metabolic",
+      Subcategory == "Elite Controller" ~ "Elite Controller",
+      TRUE ~ paste(Treatment, Timepoint, sep = " – ")
+    ),
+
+    # For consistent coloring
+    Group_color = case_when(
+      Subcategory %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite Controller"
+      ) ~ Subcategory,
+      TRUE ~ Treatment
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic",
+  "Elite Controller"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of FABP2, LEP, IGFBP2 and CD4",
+    subtitle = "Treatments first, followed by Healthy, CVD, Metabolic, and Elite Controllers",
+    x = "Treatment / Reference group",
+    y = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_treatment_then_controls.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 10,
+  height   = 10
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_treatment_then_controls.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 10,
+  height   = 10
+)
+```
+
 
 # TDF vs. TAF
 
@@ -1247,6 +1408,159 @@ ggsave(
   height   = 8
 )
 ```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "RBP2",
+  "CKMT1A_CKMT1B",
+  "FABP1",
+  "FABP2"
+)
+
+# ---------------------------
+# Backbone order
+# ---------------------------
+backbone_order <- c(
+  "TDF",
+  "TAF",
+  "Abacavir"
+)
+
+# ---------------------------
+# Colors
+# ---------------------------
+group_colors <- c(
+  "TDF"            = "#0072B2",
+  "TAF"            = "#56B4E9",
+  "Abacavir"       = "#CC79A7",
+  "Cardiovascular" = "#FC8D62",
+  "Metabolic"      = "#E5C494"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  bind_rows(hdba_data_long) %>%
+  select(DAid, Assay, NPX) %>%
+  inner_join(
+    metadata |> bind_rows(hdba_metadata),
+    by = "DAid"
+  ) %>%
+  filter(
+    Assay %in% highlighted_proteins,
+    `2nd backbone` %in% backbone_order |
+      Subcategory %in% c("Cardiovascular", "Metabolic")
+  ) %>%
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subcategory == "Cardiovascular" ~ "Cardiovascular",
+      Subcategory == "Metabolic"      ~ "Metabolic",
+      TRUE ~ paste(`2nd backbone`, Timepoint, sep = " – ")
+    ),
+
+    # -----------------------
+    # Coloring logic
+    # -----------------------
+    Group_color = case_when(
+      Subcategory %in% c("Cardiovascular", "Metabolic") ~ Subcategory,
+      TRUE ~ `2nd backbone`
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "TDF – Baseline",
+  "TDF – Follow-up",
+  "TAF – Baseline",
+  "TAF – Follow-up",
+  "Abacavir – Baseline",
+  "Abacavir – Follow-up",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, ncol = 2, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Expression of lipid-related proteins by 2nd backbone",
+    subtitle = "Baseline and follow-up, with Cardiovascular and Metabolic reference groups",
+    x = "2nd backbone / Reference group",
+    y = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_by_2nd_backbone.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 8,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_by_2nd_backbone.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 8,
+  height   = 8
+)
+
+```
+```
+
+
 
 # CD4/CD8 ratio
 
