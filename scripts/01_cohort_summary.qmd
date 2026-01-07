@@ -781,103 +781,6 @@ metadata |>
 
 ```{r}
 library(dplyr)
-library(gt)
-library(tidyr)
-
-# ---------------------------
-# Prepare Table 1 data
-# ---------------------------
-table1_df <- metadata |>
-  filter(
-    Disease == "HIV",
-    Timepoint == "Baseline"
-  ) |>
-  select(
-    ID,
-    Subcategory,
-    Sex,
-    Age = `Age (baseline)`,
-    CD4_CD8 = `CD4/CD8 ratio (baseline)`
-  ) |>
-  distinct(ID, .keep_all = TRUE)
-
-# ---------------------------
-# Helper summaries
-# ---------------------------
-summary_df <- table1_df |>
-  group_by(Subcategory) |>
-  summarise(
-    N = n(),
-    `Female, n (%)` = paste0(
-      sum(Sex == "Female", na.rm = TRUE),
-      " (",
-      round(100 * mean(Sex == "Female", na.rm = TRUE), 1),
-      ")"
-    ),
-    `Male, n (%)` = paste0(
-      sum(Sex == "Male", na.rm = TRUE),
-      " (",
-      round(100 * mean(Sex == "Male", na.rm = TRUE), 1),
-      ")"
-    ),
-    `Age, median (IQR)` = paste0(
-      round(median(Age, na.rm = TRUE), 1),
-      " (",
-      round(quantile(Age, 0.25, na.rm = TRUE), 1),
-      "–",
-      round(quantile(Age, 0.75, na.rm = TRUE), 1),
-      ")"
-    ),
-    `CD4/CD8, median (IQR)` = paste0(
-      round(median(CD4_CD8, na.rm = TRUE), 2),
-      " (",
-      round(quantile(CD4_CD8, 0.25, na.rm = TRUE), 2),
-      "–",
-      round(quantile(CD4_CD8, 0.75, na.rm = TRUE), 2),
-      ")"
-    ),
-    .groups = "drop"
-  )
-
-# ---------------------------
-# Create gt table
-# ---------------------------
-table1_gt <- summary_df |>
-  gt(rowname_col = "Subcategory") |>
-  tab_header(
-    title = "Table 1. Baseline characteristics of HIV cohort",
-    subtitle = "Stratified by HIV-1 disease subcategory"
-  ) |>
-  cols_align(
-    align = "center",
-    everything()
-  ) |>
-  cols_align(
-    align = "left",
-    stub()
-  ) |>
-  tab_stubhead(label = "Subcategory") |>
-  tab_source_note(
-    source_note = "Values are median (IQR) unless otherwise stated."
-  ) |>
-  opt_all_caps() |>
-  opt_table_outline() |>
-  opt_all_caps() |>
-  tab_options(
-    table.font.size = px(13),
-    heading.title.font.size = px(16),
-    heading.subtitle.font.size = px(13)
-  )
-
-table1_gt
-
-```
-
-
-
-
-```{r}
-library(dplyr)
 library(tidyr)
 library(gt)
 library(stringr)
@@ -1380,6 +1283,214 @@ write.xlsx(
   rowNames = TRUE
 )
 
+```
+
+# Cohort summary of Healthy/CVD/MET
+
+## Age
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggridges)
+library(forcats)
+
+# ---------------------------
+# Prepare age data
+# ---------------------------
+age_df <- metadata %>%
+  bind_rows(hdba_metadata) %>%
+  filter(
+    (Disease == "HIV" & Timepoint == "Follow-up" & Subcategory != "Elite Controller") |
+      Disease %in% c("Healthy") | Class %in% c("Cardiovascular", "Metabolic")
+  ) %>%
+  mutate(
+    Group = case_when(
+      Disease == "HIV"            ~ "HIV (Follow-up)",
+      Disease == "Healthy"        ~ "Healthy",
+      Class == "Cardiovascular" ~ "Cardiovascular",
+      Class == "Metabolic"      ~ "Metabolic"
+    ),
+    Age_use = case_when(
+      Disease == "HIV"            ~ `Age (follow-up)`,
+      Disease != "HIV"            ~ Age,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(Age_use), !is.na(Group)) %>%
+  mutate(
+    Group = fct_reorder(Group, Age_use, .fun = median, na.rm = TRUE)
+  )
+
+# ---------------------------
+# Plot
+# ---------------------------
+density_age <- ggplot(
+  age_df,
+  aes(x = Age_use, y = Group, fill = Group)
+) +
+  geom_density_ridges(
+    alpha = 0.6,
+    scale = 1.2,
+    rel_min_height = 0.01,
+    color = "grey20",
+    size = 0.3,
+    quantile_lines = TRUE,
+    quantiles = 0.5,
+    vline_linetype = "solid",
+    vline_color = "black",
+    vline_size = 0.4
+  ) +
+  labs(
+    x = "Age (years)",
+    y = NULL,
+    title = "Age distribution across cohorts",
+    subtitle = "HIV follow-up compared with Healthy, Cardiovascular, and Metabolic cohorts"
+  ) +
+  scale_fill_manual(values = c(
+    "HIV (Follow-up)" = "#0072B2",
+    "Healthy"        = "#71BF6E",
+    "Cardiovascular" = "#FC8D62",
+    "Metabolic"      = "#E5C494"
+  )) +
+  theme_minimal(base_size = 13) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  ) +
+  theme_hiv()
+
+density_age
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  "../plots/pdf/density/age_density_ridges_HIV_FU_vs_controls.pdf",
+  plot   = density_age,
+  width  = 14,
+  height = 6
+)
+
+ggsave(
+  "../plots/png/density/age_density_ridges_HIV_FU_vs_controls.png",
+  plot   = density_age,
+  width  = 14,
+  height = 6
+)
+```
+
+## Sex
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+# ---------------------------
+# Prepare sex summary data
+# ---------------------------
+sex_df <- metadata %>%
+  bind_rows(hdba_metadata) %>%
+  filter(
+    (Disease == "HIV" & Timepoint == "Follow-up" & Subcategory != "Elite Controller") |
+      Disease %in% c("Healthy") |
+      Class %in% c("Cardiovascular", "Metabolic")
+  ) %>%
+  mutate(
+    Group = case_when(
+      Disease == "HIV"            ~ "HIV (Follow-up)",
+      Disease == "Healthy"        ~ "Healthy",
+      Class == "Cardiovascular"   ~ "Cardiovascular",
+      Class == "Metabolic"        ~ "Metabolic"
+    )
+  ) %>%
+  distinct(DAid, .keep_all = TRUE) %>%
+  filter(!is.na(Sex), !is.na(Group)) %>%
+  count(Group, Sex) %>%
+  group_by(Group) %>%
+  mutate(
+    Group = fct_reorder(Group, n, .fun = sum)
+  ) %>%
+  ungroup()
+
+sex_df <- sex_df %>%
+  mutate(
+    Group = factor(
+      Group,
+      levels = c(
+        "HIV (Follow-up)",
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic"
+      )
+    )
+  )
+
+
+# ---------------------------
+# Plot
+# ---------------------------
+bar_sex <- ggplot(
+  sex_df,
+  aes(x = Group, y = n, fill = Sex)
+) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 5
+  ) +
+  coord_flip() +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Sex distribution across cohorts",
+    subtitle = "HIV follow-up compared with Healthy, Cardiovascular, and Metabolic cohorts",
+    x = NULL,
+    fill = "Sex"
+  ) +
+  theme_classic(base_size = 14) +
+  theme_hiv() +
+  theme(
+    legend.position = "top",
+    axis.text.y = element_text(size = 12)
+  )
+
+bar_sex
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  "../plots/pdf/bar/stacked_bar_sex_HIV_FU_vs_controls.pdf",
+  plot   = bar_sex,
+  width  = 10,
+  height = 6
+)
+
+ggsave(
+  "../plots/png/bar/stacked_bar_sex_HIV_FU_vs_controls.png",
+  plot   = bar_sex,
+  width  = 10,
+  height = 6
+)
+```
+
+## Combine
+
+```{r}
+library(patchwork)
+
+density_age + bar_sex
+ggsave(
+  "../plots/pdf/combined/combined_plot_age_sex.pdf",
+  width = 14,
+  height = 7
+)
 ```
 
 
