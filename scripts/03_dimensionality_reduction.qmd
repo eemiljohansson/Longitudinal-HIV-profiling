@@ -534,6 +534,196 @@ pca_df$pca_res |>
 ```
 
 ```{r}
+input_metadata <- metadata |> filter(Treatment %in% c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+))
+
+input_df <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+```
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Timepoint)) +
+  geom_point(size = 3, alpha = 0.8) +
+  # thin grey lines connecting points from the same ID
+  geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
+  geom_hline(yintercept=0, linetype="dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept=0, linetype="dashed", colour= "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2)) +
+
+  # 🔹 Filled ellipses per treatment (behind points)
+  stat_ellipse(
+    aes(
+      fill  = Timepoint,
+      group = Timepoint
+    ),
+    geom   = "polygon",
+    alpha  = 0.2,
+    colour = NA
+  ) +
+
+  # 🔹 Dashed ellipse outlines
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+      group  = Timepoint
+    ),
+    linetype = "dashed",
+    linewidth = 0.7
+  ) +
+
+  # 🔹 Paired lines (same individual)
+  geom_line(
+    aes(group = ID),
+    color = "grey80",
+    alpha = 0.5
+  ) +
+
+  # 🔹 Points
+  geom_point(
+    aes(color = Treatment, shape = Timepoint),
+    size  = 3,
+    alpha = 0.8
+  ) +
+
+  # 🔹 Reference axes
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.8) +
+
+  labs(
+    title = "PCA of HIV treatment",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Treatment",
+    fill  = "Treatment",
+    shape = "Timepoint"
+  ) +
+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  coord_equal()
+
+ggsave(
+  filename = "pca_treatment_timepoint.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_treatment_timepoint.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2)) +
+
+  # 🔹 Filled ellipses per treatment (behind points)
+  stat_ellipse(
+    aes(
+      fill  = Treatment,
+      group = Treatment
+    ),
+    geom   = "polygon",
+    alpha  = 0.2,
+    colour = NA
+  ) +
+
+  # 🔹 Dashed ellipse outlines
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+      group  = Timepoint
+    ),
+    linetype = "dashed",
+    linewidth = 0.7
+  ) +
+
+  # 🔹 Paired lines (same individual)
+  geom_line(
+    aes(group = ID),
+    color = "grey80",
+    alpha = 0.5
+  ) +
+
+  # 🔹 Points
+  geom_point(
+    aes(color = Treatment, shape = Timepoint),
+    size  = 3,
+    alpha = 0.8
+  ) +
+
+  # 🔹 Reference axes
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black", linewidth = 0.8) +
+
+  labs(
+    title = "PCA of HIV treatment",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Treatment",
+    fill  = "Treatment",
+    shape = "Timepoint"
+  ) +
+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  coord_equal()
+
+ggsave(
+  filename = "pca_treatment_timepoint.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_treatment_timepoint.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+```{r}
 library(dplyr)
 library(ggplot2)
 
@@ -1197,6 +1387,8 @@ input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Treatment %in% c("
 
 ### PCA
 
+#### Baseline & Follow-up
+
 ```{r}
 pca_df <- hd_pca(
   dat = input_df,
@@ -1230,7 +1422,228 @@ pca_df$pca_res |>
   ) +
   theme_minimal(base_size = 14) +
   scale_color_brewer(palette = "Set1")
+```
 
+#### Follow-up only
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> 
+                                             filter(Timepoint == "Follow-up") |>
+                                             filter(Treatment %in% c("INSTI + Abacavir", "INSTI + Tenofovir", "NNRTI + Tenofovir")))$DAid)
+```
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
+
+```{r}
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment by Timepoint",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1") +
+  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment by Timepoint",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1") +
+  geom_convexhull(aes(fill = Treatment, colour = Treatment), alpha = 0.2)
+```
+
+```{r}
+pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of HIV treatment by Timepoint",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Set1") +
+  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+```
+#### Follow-up only with Elite controller
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> 
+                                             filter(Timepoint == "Follow-up") |>
+                                             filter(Treatment %in% c("INSTI + Abacavir", "INSTI + Tenofovir", "NNRTI + Tenofovir", "Elite controller")))$DAid)
+```
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
+
+```{r}
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    Subcategory = factor(
+      Subcategory,
+      levels = c(
+        "Primary HIV Infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite Controller"
+      )
+    )
+  )
+
+shape_values <- c(
+  "Primary HIV Infection"      = 16, # ●
+  "More preserved immunity"    = 17, # ▲
+  "Severely impaired immunity" = 15, # ■
+  "Elite Controller"           = 18  # ◆
+)
+
+ggplot(
+  pca_plot_df,
+  aes(x = PC1, y = PC2)
+) +
+  geom_point(
+    aes(
+      color = Treatment,
+      shape = Subcategory,
+      size  = `CD4/CD8 ratio (follow-up)`
+    ),
+    alpha = 0.8
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+
+  scale_shape_manual(values = shape_values) +
+  scale_color_brewer(palette = "Set1") +
+  scale_size_continuous(range = c(2, 6)) +
+
+  labs(
+    title = "PCA of HIV treatment by Subcategory",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    shape = "HIV subcategory",
+    size  = "CD4/CD8 ratio\n(follow-up)"
+  ) +
+  theme_minimal(base_size = 14) +
+  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+
+ggsave(
+  filename = "pca_treatment_subcategory_elite_controller colored by subcategory.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "pca_treatment_subcategory_elite_controller colored by subcategory.png",
+  path     = "../plots/png/pca/",
+  width    = 10,
+  height   = 7
+)
+```
+
+```{r}
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    Subcategory = factor(
+      Subcategory,
+      levels = c(
+        "Primary HIV Infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite Controller"
+      )
+    )
+  )
+
+shape_values <- c(
+  "Primary HIV Infection"      = 16, # ●
+  "More preserved immunity"    = 17, # ▲
+  "Severely impaired immunity" = 15, # ■
+  "Elite Controller"           = 18  # ◆
+)
+
+ggplot(
+  pca_plot_df,
+  aes(x = PC1, y = PC2)
+) +
+  geom_point(
+    aes(
+      color = Treatment,
+      shape = Subcategory,
+      size  = `CD4/CD8 ratio (follow-up)`
+    ),
+    alpha = 0.8
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+
+  scale_shape_manual(values = shape_values) +
+  scale_color_brewer(palette = "Set1") +
+  scale_size_continuous(range = c(2, 6)) +
+
+  labs(
+    title = "PCA of HIV treatment by Subcategory",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    shape = "HIV subcategory",
+    size  = "CD4/CD8 ratio\n(follow-up)"
+  ) +
+  theme_minimal(base_size = 14) +
+  geom_convexhull(aes(fill = Treatment, colour = Treatment), alpha = 0.2)
+
+ggsave(
+  filename = "pca_treatment_subcategory_elite_controller colored by treatment.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "pca_treatment_subcategory_elite_controller colored by treatment.png",
+  path     = "../plots/png/pca/",
+  width    = 10,
+  height   = 7
+)
 ```
 
 ### UMAP
