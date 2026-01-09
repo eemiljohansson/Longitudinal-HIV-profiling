@@ -730,56 +730,6 @@ metadata %>%
 # Table 1
 
 ```{r}
-library(table1)
-
-library(MatchIt)
-data(lalonde)
-
-lalonde
-
-lalonde$treat    <- factor(lalonde$treat, levels=c(0, 1), labels=c("Control", "Treatment"))
-lalonde$married  <- as.logical(lalonde$married == 1)
-lalonde$nodegree <- as.logical(lalonde$nodegree == 1)
-lalonde$race     <- factor(lalonde$race, levels=c("white", "black", "hispan"),
-                                         labels=c("White", "Black", "Hispanic"))
-
-label(lalonde$race)     <- "Race"
-label(lalonde$married)  <- "Married"
-label(lalonde$nodegree) <- "No high school diploma"
-label(lalonde$age)      <- "Age"
-label(lalonde$re74)     <- "1974 Income"
-label(lalonde$re75)     <- "1975 Income"
-label(lalonde$re78)     <- "1978 Income"
-units(lalonde$age)      <- "years"
-
-pvalue <- function(x, ...) {
-    # Construct vectors of data y, and groups (strata) g
-    y <- unlist(x)
-    g <- factor(rep(1:length(x), times=sapply(x, length)))
-    if (is.numeric(y)) {
-        # For numeric variables, perform a standard 2-sample t-test
-        p <- t.test(y ~ g)$p.value
-    } else {
-        # For categorical variables, perform a chi-squared test of independence
-        p <- chisq.test(table(y, g))$p.value
-    }
-    # Format the p-value, using an HTML entity for the less-than sign.
-    # The initial empty string places the output on the line below the variable label.
-    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
-}
-
-table1(~ age + race + married + nodegree + re74 + re75 + re78 | treat,
-    data=lalonde, overall=F, extra.col=list(`P-value`=pvalue))
-```
-
-```{r}
-metadata |>
-  filter(Disease == "HIV") |>
-  filter(Timepoint== "Baseline") |>
-  select(ID, Subcategory, Sex, `Age (baseline)`, `CD4/CD8 ratio (baseline)`)
-```
-
-```{r}
 library(dplyr)
 library(tidyr)
 library(gt)
@@ -1491,6 +1441,11 @@ ggsave(
   width = 14,
   height = 7
 )
+```
+
+```{r}
+metadata |>
+  filter(Disease == "HIV") 
 ```
 
 
