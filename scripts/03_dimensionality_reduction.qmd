@@ -3,7 +3,7 @@ title: "02_dimensionality_reduction"
 format: html
 ---
 
-# Load packages
+# Setup
 
 ```{r}
 library(tidyverse)
@@ -15,52 +15,26 @@ library(org.Hs.eg.db)
 library(ggridges)
 library(ggfortify)
 library(ggConvexHull)
-```
 
-```{r}
 source("../scripts/functions/functions_disease_analyses.R")
 source("../scripts/functions/nice_plots.R")
 source("../scripts/functions/run_de_analysis.R")
-```
 
-```{r}
 select <- dplyr::select
 filter <- dplyr::filter
 ```
 
-```{r}
-theme_lordjord93_so <- function(){
-  theme_minimal() %+replace%
-    theme(axis.title.y = element_text(size = 18, family = "sans"),
-          legend.position = "bottom",
-          legend.text = element_text(size = 18, family = "sans"),
-          axis.text.x = element_text(colour ="black", size = 16, family = "sans"),
-          axis.text.y = element_text(colour ="black", size = 16, family = "sans"),
-          axis.title.x = element_text(colour = "black", size = 18, family = "sans"),
-          legend.title = element_blank(),
-          panel.background = element_blank(),
-          axis.line = element_blank(),
-          plot.title = element_text(size = 10, hjust = 0.5),
-          legend.key = element_rect(fill = "white", colour = "white")
-    )
-}
-```
-
-## Load data
+## Read data
 
 ```{r}
-metadata <- read_csv("../data/metadata.csv")
+metadata <- read_csv("../data/metadata/metadata.csv")
 data_long <- read_csv("../data/data_long.csv")
 data_wide <- read_csv("../data/data_wide.csv")
 ```
 
-# Dimensionality reduction
+# Dimensionality reduction (PCA)
 
-## Subcategories
-
-### PCA
-
-#### Baseline
+## Baseline
 
 ```{r}
 input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid)
@@ -75,67 +49,20 @@ pca_df <- hd_pca(
 ```
 
 ```{r}
-pc1 <- pca_df$pca_variance$percent_variance[1]
-pc2 <- pca_df$pca_variance$percent_variance[2]
-
-p_pca_baseline_subcategory <- pca_df$pca_res |>
-  inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
-  geom_point(aes(size = `CD4/CD8 ratio (baseline)`)) +
-  # thin grey lines connecting points from the same ID
-  labs(
-    title = "PCA of HIV samples",
-    x = paste0("PC1 (", round(pc1, 2), "%)"),
-    y = paste0("PC2 (", round(pc2, 2), "%)")
-  ) +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  # Add dashed elipses around each subcategory
-  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2) +
-  theme_hiv()
-
-p_pca_baseline_subcategory
-
-ggsave(
-  filename = "pca_baseline_subcategory.pdf",
-  path     = "../plots/pdf/pca/",
-  width    = 14,
-  height   = 7)
-
-ggsave(
-  filename = "pca_baseline_subcategory.png",
-  path     = "../plots/png/pca/",
-  width    = 14,
-  height   = 7)
-```
-
-```{r}
-input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid) |>
-  # Filter columns to only contain the significant proteins from de_res_hiv_baseline_healthy
-  select(DAid, all_of(de_res_hiv_baseline_healthy |> filter(adj.P.Val < 0.05) |> pull(Feature)))
-
-pca_df <- hd_pca(
-  dat = input_df,
-  components = 10,
-  by_sample = TRUE,
-  impute = TRUE,
-  seed = 123
-)
-
-subcategory_colors <- c(
-  "Primary HIV Infection"       = "#65A56E",  # teal / blue-green
+Subgroup_colors <- c(
+  "Primary HIV infection"       = "#65A56E",  # teal / blue-green
   "Severely impaired immunity" = "#CD4645",  # mustard yellow
   "More preserved immunity"    = "#E3C35B",  # muted red
-  "Elite Controller"           = "#377EB8",  # blue-purple
+  "Elite controller"           = "#377EB8",  # blue-purple
   "Healthy"                    = "#BDBDBD"   # neutral grey
 )
 
 pc1 <- pca_df$pca_variance$percent_variance[1]
 pc2 <- pca_df$pca_variance$percent_variance[2]
 
-p_pca_baseline_subcategory <- pca_df$pca_res |>
+p_pca_baseline_Subgroup <- pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
+  ggplot(aes(x = PC1, y = PC2, color = Subgroup)) +
   geom_point(
     aes(size = `CD4/CD8 ratio (baseline)`),
     alpha  = 0.7,
@@ -147,68 +74,28 @@ p_pca_baseline_subcategory <- pca_df$pca_res |>
     y = paste0("PC2 (", round(pc2, 2), "%)")
   ) +
   geom_convexhull(
-    aes(fill = Subcategory, colour = Subcategory),
+    aes(fill = Subgroup, colour = Subgroup),
     alpha = 0.2
   ) +
-  scale_color_manual(values = subcategory_colors) +
-  scale_fill_manual(values  = subcategory_colors) +
+  scale_color_manual(values = Subgroup_colors) +
+  scale_fill_manual(values  = Subgroup_colors) +
   theme_minimal() +
   theme_hiv()
 
-p_pca_baseline_subcategory
+p_pca_baseline_Subgroup
 
 ggsave(
-  filename = "pca_baseline_subcategory_hiv_healthy.pdf",
+  filename = "pca_baseline_Subgroup.pdf",
   path     = "../plots/pdf/pca/",
   width    = 14,
   height   = 7)
 
 ggsave(
-  filename = "pca_baseline_subcategory_hiv_healthy.png",
+  filename = "pca_baseline_Subgroup.png",
   path     = "../plots/png/pca/",
   width    = 14,
   height   = 7)
 ```
-
-## Filtering for differentially abundant proteins in baseline
-
-```{r}
-subcategory_colors <- c(
-  "Primary HIV Infection"       = "#65A56E",  # teal / blue-green
-  "Severely impaired immunity" = "#CD4645",  # mustard yellow
-  "More preserved immunity"    = "#E3C35B",  # muted red
-  "Elite Controller"           = "#377EB8",  # blue-purple
-  "Healthy"                    = "#BDBDBD"   # neutral grey
-)
-
-pc1 <- pca_df$pca_variance$percent_variance[1]
-pc2 <- pca_df$pca_variance$percent_variance[2]
-
-p_pca_baseline_subcategory <- pca_df$pca_res |>
-  inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Subcategory)) +
-  geom_point(
-    aes(size = `CD4/CD8 ratio (baseline)`),
-    alpha  = 0.7,
-    stroke = 0
-  ) +
-  labs(
-    title = "PCA of HIV samples",
-    x = paste0("PC1 (", round(pc1, 2), "%)"),
-    y = paste0("PC2 (", round(pc2, 2), "%)")
-  ) +
-  geom_convexhull(
-    aes(fill = Subcategory, colour = Subcategory),
-    alpha = 0.2
-  ) +
-  scale_color_manual(values = subcategory_colors) +
-  scale_fill_manual(values  = subcategory_colors) +
-  theme_minimal() +
-  theme_hiv()
-
-p_pca_baseline_subcategory
-```
-
 
 # Baseline, follow-up and healthy
 
@@ -232,30 +119,30 @@ timepoint_colors <- c(
 )
 
 hiv_panels <- c(
-  "Primary HIV Infection",
+  "Primary HIV infection",
   "More preserved immunity",
   "Severely impaired immunity",
-  "Elite Controller"
+  "Elite controller"
 )
 
 plot_df <- pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
   # Make ID into character
   mutate(ID = as.character(ID)) |>
-  dplyr::filter(Subcategory %in% c(hiv_panels, "Healthy")) |>
+  dplyr::filter(Subgroup %in% c(hiv_panels, "Healthy")) |>
   dplyr::mutate(
-    Facet_group = Subcategory,
+    Facet_group = Subgroup,
     # ensure Healthy has a consistent Timepoint label
-    Timepoint = ifelse(Subcategory == "Healthy", "Healthy", Timepoint)
+    Timepoint = ifelse(Subgroup == "Healthy", "Healthy", Timepoint)
   )
 
 healthy_df <- plot_df |>
-  dplyr::filter(Subcategory == "Healthy") |>
+  dplyr::filter(Subgroup == "Healthy") |>
   dplyr::select(-Facet_group) |>
   tidyr::expand_grid(Facet_group = hiv_panels)
 
 plot_df <- plot_df |>
-  dplyr::filter(Subcategory != "Healthy") |>
+  dplyr::filter(Subgroup != "Healthy") |>
   dplyr::bind_rows(healthy_df)
 
 plot_df$Facet_group <- factor(plot_df$Facet_group, levels = hiv_panels)
@@ -361,7 +248,7 @@ pc2 <- pca_df$pca_variance$percent_variance[2]
 
 pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Subcategory, shape = Timepoint)) +
+  ggplot(aes(x = PC1, y = PC2, color = Subgroup, shape = Timepoint)) +
   geom_point(size = 3, alpha = 0.8) +
   # thin grey lines connecting points from the same ID
   geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
@@ -377,9 +264,9 @@ pca_df$pca_res |>
 ```{r}
 pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Subcategory, shape = Timepoint)) +
+  ggplot(aes(x = PC1, y = PC2, color = Subgroup, shape = Timepoint)) +
   geom_point(size = 3, alpha = 0.8) +
- # geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2) +
+ # geom_convexhull(aes(fill = Subgroup, colour = Subgroup), alpha = 0.2) +
   geom_hline(yintercept=0, linetype="dashed", color = "black", size = 0.8) +
   geom_vline(xintercept=0, linetype="dashed", colour= "black", size = 0.8) +
   geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
@@ -390,12 +277,12 @@ pca_df$pca_res |>
   ) +
   scale_fill_manual(values = c(`More preserved immunity` = "#64629A", 
                                `Severely impaired immunity` = "#CC5E5E", 
-                               `Elite Controller` = "#529F96", 
-                               `Primary HIV Infection` = "#DCAA1F")) +
+                               `Elite controller` = "#529F96", 
+                               `Primary HIV infection` = "#DCAA1F")) +
   scale_colour_manual(values =  c(`More preserved immunity` = "#64629A", 
                                   `Severely impaired immunity` = "#CC5E5E", 
-                                  `Elite Controller` = "#529F96", 
-                                  `Primary HIV Infection` = "#DCAA1F")) +
+                                  `Elite controller` = "#529F96", 
+                                  `Primary HIV infection` = "#DCAA1F")) +
   theme_lordjord93_so()
 ```
 
@@ -419,7 +306,7 @@ umap_df <- hd_umap(
 ```{r}
 umap_df$umap_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = UMAP1, y = UMAP2, color = Subcategory, shape = Timepoint)) +
+  ggplot(aes(x = UMAP1, y = UMAP2, color = Subgroup, shape = Timepoint)) +
   geom_point(size = 3, alpha = 0.8) +
   # thin grey lines connecting points from the same ID
   geom_line(aes(group = ID), color = "grey80", alpha = 0.5) +
@@ -731,10 +618,10 @@ library(ggplot2)
 # Define subcategories
 # ---------------------------
 hiv_panels <- c(
-  "Primary HIV Infection",
+  "Primary HIV infection",
   "More preserved immunity",
   "Severely impaired immunity",
-  "Elite Controller"
+  "Elite controller"
 )
 
 # ---------------------------
@@ -744,20 +631,20 @@ plot_df <- pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
   mutate(
     ID = as.character(ID),
-    Facet_group = Subcategory
+    Facet_group = Subgroup
   ) |>
-  filter(Subcategory %in% hiv_panels)
+  filter(Subgroup %in% hiv_panels)
 
 # ---------------------------
-# Duplicate Elite Controllers into all panels
+# Duplicate Elite controllers into all panels
 # ---------------------------
 elite_df <- plot_df |>
-  filter(Subcategory == "Elite Controller") |>
+  filter(Subgroup == "Elite controller") |>
   select(-Facet_group) |>
   tidyr::expand_grid(Facet_group = hiv_panels)
 
 plot_df <- plot_df |>
-  filter(Subcategory != "Elite Controller") |>
+  filter(Subgroup != "Elite controller") |>
   bind_rows(elite_df)
 
 plot_df$Facet_group <- factor(plot_df$Facet_group, levels = hiv_panels)
@@ -818,7 +705,7 @@ p_pca_treatment_facets <- ggplot(
   geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
 
   labs(
-    title = "PCA of HIV treatment by disease stage (Elite Controllers shown in all panels)",
+    title = "PCA of HIV treatment by disease stage (Elite controllers shown in all panels)",
     x = paste0("PC1 (", round(pc1, 2), "%)"),
     y = paste0("PC2 (", round(pc2, 2), "%)"),
     color = "Treatment",
@@ -933,22 +820,22 @@ plot_df <- pca_df$pca_res |>
     ID = as.character(ID),
     Facet_group = Treatment
   ) |>
-  # keep only treatments of interest + Elite Controllers
+  # keep only treatments of interest + Elite controllers
   filter(
     Treatment %in% treatment_panels |
-      Subcategory == "Elite Controller"
+      Subgroup == "Elite controller"
   )
 
 # ---------------------------
-# Duplicate Elite Controllers into all treatment panes
+# Duplicate Elite controllers into all treatment panes
 # ---------------------------
 ec_df <- plot_df |>
-  filter(Subcategory == "Elite Controller") |>
+  filter(Subgroup == "Elite controller") |>
   select(-Facet_group) |>
   expand_grid(Facet_group = treatment_panels)
 
 plot_df <- plot_df |>
-  filter(Subcategory != "Elite Controller") |>
+  filter(Subgroup != "Elite controller") |>
   bind_rows(ec_df)
 
 plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
@@ -1009,7 +896,7 @@ p_pca_treatment_timepoint <- ggplot(
   geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
 
   labs(
-    title = "PCA of HIV samples by treatment regimen (Elite Controllers shown in all panes)",
+    title = "PCA of HIV samples by treatment regimen (Elite controllers shown in all panes)",
     x = paste0("PC1 (", round(pc1, 2), "%)"),
     y = paste0("PC2 (", round(pc2, 2), "%)"),
     color = "Timepoint",
@@ -1028,7 +915,7 @@ p_pca_treatment_timepoint
 
 ```{r}
 input_metadata <- metadata |>
-  filter(Subcategory != "Elite Controller")
+  filter(Subgroup != "Elite controller")
 
 input_df <- data_wide |> 
   filter(DAid %in% input_metadata$DAid)
@@ -1070,19 +957,19 @@ plot_df <- pca_df$pca_res |>
   # keep treatments of interest + Healthy
   filter(
     Treatment %in% treatment_panels |
-      Subcategory == "Healthy"
+      Subgroup == "Healthy"
   )
 
 # ---------------------------
 # Duplicate Healthy into all treatment panes
 # ---------------------------
 healthy_df <- plot_df |>
-  filter(Subcategory == "Healthy") |>
+  filter(Subgroup == "Healthy") |>
   select(-Facet_group) |>
   expand_grid(Facet_group = treatment_panels)
 
 plot_df <- plot_df |>
-  filter(Subcategory != "Healthy") |>
+  filter(Subgroup != "Healthy") |>
   bind_rows(healthy_df)
 
 plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
@@ -1126,7 +1013,7 @@ p_pca_treatment_timepoint <- ggplot(
   geom_line(
     data = plot_df |>
       filter(
-        Subcategory != "Healthy",
+        Subgroup != "Healthy",
         Timepoint %in% c("Baseline", "Follow-up")
       ),
     aes(group = interaction(ID, Facet_group)),
@@ -1178,9 +1065,9 @@ ggsave(
 ### Including EC
 
 ```{r}
-# Exclude Elite Controllers from PCA calculation
+# Exclude Elite controllers from PCA calculation
 input_metadata <- metadata |>
-  dplyr::filter(Subcategory != "Healthy")
+  dplyr::filter(Subgroup != "Healthy")
 
 input_df <- data_wide |> 
   dplyr::filter(DAid %in% input_metadata$DAid)
@@ -1213,7 +1100,7 @@ treatment_panels <- c(
 timepoint_colors <- c(
   "Baseline"         = "#E94849",  # red
   "Follow-up"        = "#5F98C6",  # blue
-  "Elite Controller" = "#009E73"   # green
+  "Elite controller" = "#009E73"   # green
 )
 
 
@@ -1225,27 +1112,27 @@ plot_df <- pca_df$pca_res |>
   mutate(
     ID = as.character(ID),
     Facet_group = Treatment,
-    # 🔑 FIX: collapse Elite Controllers into a single pseudo-timepoint
-    Timepoint = ifelse(Subcategory == "Elite Controller",
-                       "Elite Controller",
+    # 🔑 FIX: collapse Elite controllers into a single pseudo-timepoint
+    Timepoint = ifelse(Subgroup == "Elite controller",
+                       "Elite controller",
                        Timepoint)
   ) |>
-  # keep treatments of interest + Elite Controllers
+  # keep treatments of interest + Elite controllers
   filter(
     Treatment %in% treatment_panels |
-      Subcategory == "Elite Controller"
+      Subgroup == "Elite controller"
   )
 
 # ---------------------------
-# Duplicate Elite Controllers into all treatment panes
+# Duplicate Elite controllers into all treatment panes
 # ---------------------------
 ec_df <- plot_df |>
-  filter(Subcategory == "Elite Controller") |>
+  filter(Subgroup == "Elite controller") |>
   select(-Facet_group) |>
   expand_grid(Facet_group = treatment_panels)
 
 plot_df <- plot_df |>
-  filter(Subcategory != "Elite Controller") |>
+  filter(Subgroup != "Elite controller") |>
   bind_rows(ec_df)
 
 plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
@@ -1289,7 +1176,7 @@ p_pca_treatment_timepoint <- ggplot(
   geom_line(
     data = plot_df |>
       filter(
-        Subcategory != "Elite Controller",
+        Subgroup != "Elite controller",
         Timepoint %in% c("Baseline", "Follow-up")
       ),
     aes(group = interaction(ID, Facet_group)),
@@ -1448,7 +1335,7 @@ pc2 <- pca_df$pca_variance$percent_variance[2]
 ```{r}
 pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subgroup)) +
   geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
@@ -1459,11 +1346,11 @@ pca_df$pca_res |>
   ) +
   theme_minimal(base_size = 14) +
   scale_color_brewer(palette = "Set1") +
-  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+  geom_convexhull(aes(fill = Subgroup, colour = Subgroup), alpha = 0.2)
 
 pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subgroup)) +
   geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
@@ -1480,7 +1367,7 @@ pca_df$pca_res |>
 ```{r}
 pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
-  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subcategory)) +
+  ggplot(aes(x = PC1, y = PC2, color = Treatment, shape = Subgroup)) +
   geom_point(aes(size = `CD4/CD8 ratio (follow-up)`, alpha = 0.8)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
@@ -1491,7 +1378,7 @@ pca_df$pca_res |>
   ) +
   theme_minimal(base_size = 14) +
   scale_color_brewer(palette = "Set1") +
-  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+  geom_convexhull(aes(fill = Subgroup, colour = Subgroup), alpha = 0.2)
 ```
 #### Follow-up only with Elite controller
 
@@ -1518,22 +1405,22 @@ pc2 <- pca_df$pca_variance$percent_variance[2]
 pca_plot_df <- pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
   mutate(
-    Subcategory = factor(
-      Subcategory,
+    Subgroup = factor(
+      Subgroup,
       levels = c(
-        "Primary HIV Infection",
+        "Primary HIV infection",
         "More preserved immunity",
         "Severely impaired immunity",
-        "Elite Controller"
+        "Elite controller"
       )
     )
   )
 
 shape_values <- c(
-  "Primary HIV Infection"      = 16, # ●
+  "Primary HIV infection"      = 16, # ●
   "More preserved immunity"    = 17, # ▲
   "Severely impaired immunity" = 15, # ■
-  "Elite Controller"           = 18  # ◆
+  "Elite controller"           = 18  # ◆
 )
 
 ggplot(
@@ -1543,7 +1430,7 @@ ggplot(
   geom_point(
     aes(
       color = Treatment,
-      shape = Subcategory,
+      shape = Subgroup,
       size  = `CD4/CD8 ratio (follow-up)`
     ),
     alpha = 0.8
@@ -1556,24 +1443,24 @@ ggplot(
   scale_size_continuous(range = c(2, 6)) +
 
   labs(
-    title = "PCA of HIV treatment by Subcategory",
+    title = "PCA of HIV treatment by Subgroup",
     x = paste0("PC1 (", round(pc1, 2), "%)"),
     y = paste0("PC2 (", round(pc2, 2), "%)"),
-    shape = "HIV subcategory",
+    shape = "HIV Subgroup",
     size  = "CD4/CD8 ratio\n(follow-up)"
   ) +
   theme_minimal(base_size = 14) +
-  geom_convexhull(aes(fill = Subcategory, colour = Subcategory), alpha = 0.2)
+  geom_convexhull(aes(fill = Subgroup, colour = Subgroup), alpha = 0.2)
 
 ggsave(
-  filename = "pca_treatment_subcategory_elite_controller colored by subcategory.pdf",
+  filename = "pca_treatment_Subgroup_elite_controller colored by Subgroup.pdf",
   path     = "../plots/pdf/pca/",
   width    = 10,
   height   = 7
 )
 
 ggsave(
-  filename = "pca_treatment_subcategory_elite_controller colored by subcategory.png",
+  filename = "pca_treatment_Subgroup_elite_controller colored by Subgroup.png",
   path     = "../plots/png/pca/",
   width    = 10,
   height   = 7
@@ -1584,22 +1471,22 @@ ggsave(
 pca_plot_df <- pca_df$pca_res |>
   inner_join(metadata, by = "DAid") |>
   mutate(
-    Subcategory = factor(
-      Subcategory,
+    Subgroup = factor(
+      Subgroup,
       levels = c(
-        "Primary HIV Infection",
+        "Primary HIV infection",
         "More preserved immunity",
         "Severely impaired immunity",
-        "Elite Controller"
+        "Elite controller"
       )
     )
   )
 
 shape_values <- c(
-  "Primary HIV Infection"      = 16, # ●
+  "Primary HIV infection"      = 16, # ●
   "More preserved immunity"    = 17, # ▲
   "Severely impaired immunity" = 15, # ■
-  "Elite Controller"           = 18  # ◆
+  "Elite controller"           = 18  # ◆
 )
 
 ggplot(
@@ -1609,7 +1496,7 @@ ggplot(
   geom_point(
     aes(
       color = Treatment,
-      shape = Subcategory,
+      shape = Subgroup,
       size  = `CD4/CD8 ratio (follow-up)`
     ),
     alpha = 0.8
@@ -1622,24 +1509,24 @@ ggplot(
   scale_size_continuous(range = c(2, 6)) +
 
   labs(
-    title = "PCA of HIV treatment by Subcategory",
+    title = "PCA of HIV treatment by Subgroup",
     x = paste0("PC1 (", round(pc1, 2), "%)"),
     y = paste0("PC2 (", round(pc2, 2), "%)"),
-    shape = "HIV subcategory",
+    shape = "HIV Subgroup",
     size  = "CD4/CD8 ratio\n(follow-up)"
   ) +
   theme_minimal(base_size = 14) +
   geom_convexhull(aes(fill = Treatment, colour = Treatment), alpha = 0.2)
 
 ggsave(
-  filename = "pca_treatment_subcategory_elite_controller colored by treatment.pdf",
+  filename = "pca_treatment_Subgroup_elite_controller colored by treatment.pdf",
   path     = "../plots/pdf/pca/",
   width    = 10,
   height   = 7
 )
 
 ggsave(
-  filename = "pca_treatment_subcategory_elite_controller colored by treatment.png",
+  filename = "pca_treatment_Subgroup_elite_controller colored by treatment.png",
   path     = "../plots/png/pca/",
   width    = 10,
   height   = 7
@@ -1777,10 +1664,10 @@ timepoint_colors <- c(
 )
 
 hiv_panels <- c(
-  "Primary HIV Infection",
+  "Primary HIV infection",
   "More preserved immunity",
   "Severely impaired immunity",
-  "Elite Controller"
+  "Elite controller"
 )
 
 reference_groups <- c(
@@ -1797,19 +1684,19 @@ base_df <- pca_df$pca_res |>
   ) |>
   mutate(
     ID = as.character(ID),
-    Timepoint = ifelse(Subcategory %in% reference_groups,
-                       Subcategory,
+    Timepoint = ifelse(Subgroup %in% reference_groups,
+                       Subgroup,
                        Timepoint)
   )
 
 # ---- HIV samples define facets ----
 hiv_df <- base_df |>
-  filter(Subcategory %in% hiv_panels) |>
-  mutate(Facet_group = Subcategory)
+  filter(Subgroup %in% hiv_panels) |>
+  mutate(Facet_group = Subgroup)
 
 # ---- Reference samples duplicated into all HIV facets ----
 reference_df <- base_df |>
-  filter(Subcategory %in% reference_groups) |>
+  filter(Subgroup %in% reference_groups) |>
   tidyr::expand_grid(Facet_group = hiv_panels)
 
 # ---- Combine ----
@@ -1892,6 +1779,320 @@ ggsave(
   width    = 18,
   height   = 10)
 ```
+
+# CD4/CD8
+
+## Statuses
+
+### Baseline
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV") |> 
+                                             filter(Subgroup != "Elite controller"))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_cd4cd8 <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = `CD4/CD8 status (baseline)`)) +
+  geom_point(aes(size = `CD4/CD8 ratio (baseline)`)) +
+  # thin grey lines connecting points from the same ID
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  # Add dashed elipses around each Subgroup
+  geom_convexhull(aes(fill = `CD4/CD8 status (baseline)`, color = `CD4/CD8 status (baseline)`), alpha = 0.2) +
+  theme_hiv()
+
+p_pca_baseline_cd4cd8
+
+ggsave(
+  filename = "pca_cd4cd8_baseline.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_cd4cd8_baseline.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+### Follow-up
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Follow-up") |> filter(Disease == "HIV") |> 
+                                             filter(!is.na(`CD4/CD8 status (follow-up)`)) |>
+                                             filter(Subgroup != "Elite controller"))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_cd4cd8 <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = `CD4/CD8 status (follow-up)`)) +
+  geom_point(aes(size = `CD4/CD8 ratio (follow-up)`)) +
+  # thin grey lines connecting points from the same ID
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  # Add dashed elipses around each Subgroup
+  geom_convexhull(aes(fill = `CD4/CD8 status (follow-up)`, color = `CD4/CD8 status (follow-up)`), alpha = 0.2) +
+  theme_hiv()
+
+p_pca_baseline_cd4cd8
+
+ggsave(
+  filename = "pca_cd4cd8_FU.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_cd4cd8_FU.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+## High vs. low responders
+
+### Baseline
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |>
+  filter(Disease == "HIV") |>
+  filter(Subgroup != "Elite controller") |>
+  mutate(Responder_status = case_when(
+    `CD4/CD8 ratio (follow-up)` - `CD4/CD8 ratio (baseline)` >= 0.6 ~ "High Responder",
+    `CD4/CD8 ratio (follow-up)` - `CD4/CD8 ratio (baseline)` <= 0.2 ~ "Low Responder",
+  )) |>
+  filter(!is.na(Responder_status))
+
+input_df <- data_wide |> filter(DAid %in% (input_metadata)$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_cd4cd8 <- pca_df$pca_res |>
+  inner_join(input_metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Responder_status)) +
+  geom_point(aes(size = `CD4/CD8 ratio (baseline)`)) +
+  # thin grey lines connecting points from the same ID
+  labs(
+    title = "PCA of HIV samples",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  # Add dashed elipses around each Subgroup
+  geom_convexhull(aes(fill = Responder_status, color = Responder_status), alpha = 0.2) +
+  theme_hiv()
+
+p_pca_baseline_cd4cd8
+
+ggsave(
+  filename = "pca_cd4cd8_responder.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7)
+
+ggsave(
+  filename = "pca_cd4cd8_responder.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7)
+```
+
+### With healthy
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller") |>
+  mutate(
+    delta_cd4cd8 =
+      `CD4/CD8 ratio (follow-up)` -
+      `CD4/CD8 ratio (baseline)`,
+
+    Responder_status = case_when(
+      Disease == "Healthy" ~ "Healthy",
+      delta_cd4cd8 >= 0.6  ~ "High Responder",
+      delta_cd4cd8 <= 0.2  ~ "Low Responder",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(Responder_status))
+
+input_metadata_faceted <- bind_rows(
+  # HIV → one facet only
+  input_metadata |>
+    filter(Disease == "HIV") |>
+    mutate(
+      Facet = if_else(
+        Responder_status == "High Responder",
+        "High responders vs Healthy",
+        "Low responders vs Healthy"
+      )
+    ),
+
+  # Healthy → duplicated into both facets
+  input_metadata |>
+    filter(Disease == "Healthy") |>
+    tidyr::expand_grid(
+      Facet = c(
+        "High responders vs Healthy",
+        "Low responders vs Healthy"
+      )
+    )
+)
+
+input_df <- data_wide |>
+  filter(DAid %in% input_metadata_faceted$DAid)
+
+pca_df <- hd_pca(
+  dat        = input_df,
+  components = 10,
+  by_sample  = TRUE,
+  impute     = TRUE,
+  seed       = 123
+)
+
+```
+
+```{r}
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_cd4cd8 <- pca_df$pca_res |>
+  inner_join(input_metadata_faceted, by = "DAid") |>
+  ggplot(
+    aes(
+      x = PC1,
+      y = PC2,
+      color = Responder_status
+    )
+  ) +
+
+  # 🔹 HIV trajectories (Baseline → Follow-up)
+  geom_line(
+    data = \(d) d |> filter(Disease == "HIV"),
+    aes(group = ID),
+    color = "grey70",
+    linewidth = 0.4,
+    alpha = 0.7
+  ) +
+
+  # Points
+  geom_point(
+    aes(size = `CD4/CD8 ratio (baseline)`),
+    alpha = 0.85
+  ) +
+
+  # Facets
+  facet_wrap(~ Facet) +
+
+  # Axes reference
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey70") +
+
+  # 🔹 Dashed ellipse outlines
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+#      group  = interaction(Timepoint, Facet_group)
+    ),
+    linetype  = "dashed",
+    linewidth = 0.6
+  ) +
+
+  scale_color_manual(values = c(
+    "High Responder" = "#009E73",
+    "Low Responder"  = "#D55E00",
+    "Healthy"        = "#0072B2"
+  )) +
+
+  scale_fill_manual(values = c(
+    "High Responder" = "#009E73",
+    "Low Responder"  = "#D55E00",
+    "Healthy"        = "#0072B2"
+  )) +
+
+  labs(
+    title = "PCA of plasma proteome by CD4/CD8 response",
+    subtitle = "Healthy shown in both facets; grey lines connect HIV baseline to follow-up",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Group",
+    size  = "CD4/CD8 ratio (baseline)"
+  ) +
+
+  theme_minimal(base_size = 14) +
+  theme_hiv() +
+  theme(
+    legend.position = "top",
+    strip.text = element_text(face = "bold")
+  )
+
+p_pca_cd4cd8
+
+ggsave(
+  filename = "pca_cd4cd8_responder_healthy.pdf",
+  path     = "../plots/pdf/pca/",
+  width    = 14,
+  height   = 7
+)
+
+ggsave(
+  filename = "pca_cd4cd8_responder_healthy.png",
+  path     = "../plots/png/pca/",
+  width    = 14,
+  height   = 7
+)
+```
+
+
 
 # Treatment
 
