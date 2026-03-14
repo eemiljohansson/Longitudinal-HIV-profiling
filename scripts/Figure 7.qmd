@@ -1,0 +1,110 @@
+---
+title: "Figure 7"
+format: html
+---
+
+# Setup
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(patchwork)
+library(ggridges)
+library(ggalluvial)
+library(forcats)
+library(HDAnalyzeR)
+library(ggConvexHull)
+library(UpSetR)
+
+# Specify function
+select <- dplyr::select
+filter <- dplyr::filter
+mutate <- dplyr::mutate
+rename <- dplyr::rename
+
+# Set ggplot2 defaults
+ggplot2::update_geom_defaults(
+  "point",
+  list(size = 2, alpha = 0.6)
+)
+
+# Source scripts
+source("../scripts/functions/themes_palettes.R")
+
+# Read data
+metadata <- read_csv("../data/metadata/metadata.csv")
+data_long <- read_csv("../data/data_long.csv")
+data_wide <- read_csv("../data/data_wide.csv")
+```
+
+# Figure 3
+
+## Figure 3A
+
+```{r}
+
+```
+
+## Figure 3B
+
+```{r}
+
+```
+
+## Figure 3C
+
+```{r}
+
+```
+
+## Figure 3D
+
+```{r}
+
+```
+
+## Figure 3E
+
+```{r}
+
+```
+
+## Figure 3F
+
+```{r}
+
+```
+
+## Figure 3G
+
+```{r}
+
+```
+
+# Save plots
+
+## Figure 3
+
+```{r}
+
+```
+
+## Supplementary Figure 3
+
+```{r}
+
+```
+
+# Save Tables
+
+```{r}
+
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+End of file.

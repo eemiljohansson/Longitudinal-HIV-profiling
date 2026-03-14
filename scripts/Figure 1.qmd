@@ -1,0 +1,636 @@
+---
+title: "Figure 1"
+format: html
+---
+
+# Setup
+
+## Load libraries
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(patchwork)
+library(ggridges)
+library(ggalluvial)
+library(forcats)
+
+# Specify function
+select <- dplyr::select
+filter <- dplyr::filter
+mutate <- dplyr::mutate
+rename <- dplyr::rename
+
+# Source scripts
+source("../scripts/functions/themes_palettes.R")
+
+# Read data
+metadata <- read_csv("../data/metadata/metadata.csv")
+```
+
+# Figure 1
+
+## Figure 1B
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggridges)
+
+# --------------------------------------------------
+# 1. Prepare dataset
+# --------------------------------------------------
+
+df_both <- metadata %>%
+  filter(Disease == "HIV", Timepoint %in% c("Baseline", "Follow-up")) %>%
+  mutate(
+    Age_use = case_when(
+      Timepoint == "Baseline"  ~ `Age (baseline)`,
+      Timepoint == "Follow-up" ~ `Age (follow-up)`,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(Age_use), !is.na(Subgroup)) %>%
+  mutate(
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "Elite controller",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Primary HIV infection"
+      )
+    )
+  )
+
+# --------------------------------------------------
+# 2. Calculate n per subgroup (unique individuals)
+# --------------------------------------------------
+
+subgroup_counts <- df_both %>%
+  distinct(ID, Subgroup) %>%
+  count(Subgroup)
+
+subgroup_labels <- setNames(
+  paste0(subgroup_counts$Subgroup, " (n=", subgroup_counts$n, ")"),
+  subgroup_counts$Subgroup
+)
+
+# --------------------------------------------------
+# 3. Plot density ridges
+# --------------------------------------------------
+
+density_age <- ggplot(df_both, aes(x = Age_use, y = Subgroup, fill = Timepoint)) +
+  geom_density_ridges(
+    alpha = 0.5,
+    scale = 1.2,
+    rel_min_height = 0.01,
+    color = "grey20",
+    size = 0.3,
+    quantile_lines = TRUE,
+    quantiles = 0.5,
+    vline_linetype = "solid",
+    vline_color   = "black",
+    vline_size    = 0.4
+  ) +
+  scale_y_discrete(labels = subgroup_labels) +
+  labs(
+    x = "Age (years)",
+    y = "HIV-1 subgroup",
+    title = "Age distribution",
+    subtitle = "Baseline vs follow-up samples; vertical line = median"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Baseline" = "#1f78b4",
+      "Follow-up" = "#33a02c"
+    )
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.minor = element_blank()) +
+  theme_hiv() +
+  theme(legend.position = "top")
+
+density_age
+```
+
+## Figure 1C
+
+```{r}
+# Desired order
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+# Summarize counts per Subgroup × Sex
+sex_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(Sex)) %>%
+  mutate(Subgroup = factor(Subgroup, levels = subgroup_levels)) %>%
+  count(Subgroup, Sex)
+
+# Stacked barplot
+bar_sex <- ggplot(sex_summary, aes(x = Subgroup, y = n, fill = Sex)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 7
+  ) +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Sex distribution",
+    x = "HIV-1 subgroup",
+    fill = "Sex"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_flip() +
+  theme_hiv()
+
+bar_sex
+```
+
+## Figure 1D
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# 1. Define category levels
+cd4cd8_levels <- c("Very low", "Low", "Normal")
+
+# 2. Define subgroup order
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+# 3. Classify each individual's change in CD4/CD8 status
+cd4cd8_class <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  select(
+    Subgroup, ID,
+    baseline = `CD4/CD8 status (baseline)`,
+    followup = `CD4/CD8 status (follow-up)`
+  ) %>%
+  filter(!is.na(baseline) & !is.na(followup)) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    baseline = factor(baseline, levels = cd4cd8_levels),
+    followup = factor(followup, levels = cd4cd8_levels),
+    change = case_when(
+      as.numeric(followup) > as.numeric(baseline) ~ "Improved",
+      as.numeric(followup) < as.numeric(baseline) ~ "Worsened",
+      TRUE                                        ~ "Similar"
+    )
+  )
+
+# 4. Summarize counts and percents per Subgroup
+cd4cd8_summary <- cd4cd8_class %>%
+  count(Subgroup, change) %>%
+  group_by(Subgroup) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label   = paste0(n, " (", percent, "%)")
+  )
+
+# 5. Stacked barplot
+bar_improvements <- ggplot(cd4cd8_summary,
+                           aes(x = Subgroup, y = n, fill = change)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 7
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Improved" = "#1b9e77",
+      "Similar"  = "grey80",
+      "Worsened" = "#d95f02"
+    )
+  ) +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "CD4/CD8 T-cell count status change (Baseline → Follow-up)",
+    x = "HIV-1 subgroup",
+    fill = "Change"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_flip() +
+  theme_hiv()
+
+bar_improvements
+```
+
+## Figure 1E
+
+```{r}
+# -----------------------------
+# Define categorical levels
+# -----------------------------
+cd4cd8_levels <- c("Normal", "Low", "Very low")
+Subgroup_levels <- c("Elite controller", "More preserved immunity",
+                        "Severely impaired immunity", "Primary HIV infection")
+art_levels <- c("Untreated", "Other", "INSTI", "NNRTI")
+backbone_levels <- c("Untreated", "Other", "Abacavir", "Tenofovir")
+
+# -----------------------------
+# Define color palettes
+# -----------------------------
+stratum_colors <- c(
+  # Subgroup
+  "Elite controller" = "#1b9e77",
+  "More preserved immunity" = "#d95f02",
+  "Severely impaired immunity" = "#7570b3",
+  "Primary HIV infection" = "#e7298a",
+  # CD4/CD8 status
+  "Normal" = "#66c2a5",
+  "Low" = "#fc8d62",
+  "Very low" = "#8da0cb",
+  # ART
+  "INSTI" = "#e78ac3",
+  "NNRTI" = "#a6d854",
+  "Other" = "#ffd92f",
+  "Untreated" = "#e5c494",
+  # Backbone
+  "Abacavir" = "#b3b3b3",
+  "Tenofovir" = "#80b1d3"
+)
+
+# -----------------------------
+# Prepare data
+# -----------------------------
+plot_data <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    # --- ART grouping ---
+    ART_grouped = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      ART == "INSTI" ~ "INSTI",
+      ART == "NNRTI" ~ "NNRTI",
+      TRUE ~ "Other"  # everyone else is Other
+    ),
+
+    # --- Backbone grouping ---
+    Backbone_grouped = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      str_detect(tolower(`Backbone 2`), "abacavir") ~ "Abacavir",
+      str_detect(tolower(`Backbone 2`), "tenofovir") ~ "Tenofovir",
+      TRUE ~ "Other"  # all non-EC or unrecognized backbones = Other
+    )
+  ) %>%
+  group_by(
+    ID, Subgroup,
+    `CD4/CD8 status (baseline)`, ART_grouped,
+    Backbone_grouped, `CD4/CD8 status (follow-up)`
+  ) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = Subgroup_levels),
+    ART_grouped = factor(ART_grouped, levels = art_levels),
+    Backbone_grouped = factor(Backbone_grouped, levels = backbone_levels),
+    `CD4/CD8 status (baseline)` = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels),
+    `CD4/CD8 status (follow-up)` = factor(`CD4/CD8 status (follow-up)`, levels = cd4cd8_levels)
+  )
+
+# -----------------------------
+# Sankey / Alluvial plot
+# -----------------------------
+sankey_plot <- ggplot(
+  plot_data,
+  aes(axis1 = Subgroup,
+      axis2 = `CD4/CD8 status (baseline)`,
+      axis3 = ART_grouped,
+      axis4 = Backbone_grouped,
+      axis5 = `CD4/CD8 status (follow-up)`,
+      y = n)
+) +
+  geom_alluvium(aes(fill = Subgroup), width = 1/12, alpha = 0.7) +
+  geom_stratum(aes(fill = after_stat(stratum)), width = 1/12) +
+  geom_label(
+    stat = "stratum",
+    aes(label = paste0(after_stat(stratum), "\n(n=", after_stat(count), ")")),
+    size = 3,
+    lineheight = 0.9,
+    fill = "black",
+    color = "white",
+    label.size = NA
+  ) +
+  scale_fill_manual(values = stratum_colors, name = "Group") +
+  scale_x_discrete(
+    limits = c("Subgroup", "CD4/CD8 status (baseline)",
+               "ART", "Backbone", "CD4/CD8 status (follow-up)"),
+    expand = c(0.05, 0.05)
+  ) +
+  labs(
+    title = "Sankey flow of HIV subcategories, CD4/CD8 status, ART, and backbones",
+    subtitle = "Only Elite controllers are untreated; all others grouped as INSTI, NNRTI, or Other",
+    y = "Number of individuals"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold")
+  ) +
+  # remove legend
+  theme(legend.position = "none")
+
+sankey_plot
+```
+
+# Supplementary Figure 1
+
+## Figure S1A
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1) Pivot your HIV-RNA values into long form, drop Healthy
+df_rna <- metadata %>%
+  filter(Disease != "Healthy") %>%
+  select(ID, Subgroup,
+         `HIV-RNA (baseline)`,
+         `HIV-RNA (follow-up)`) %>%
+  pivot_longer(
+    cols      = c(`HIV-RNA (baseline)`, `HIV-RNA (follow-up)`),
+    names_to  = "Timepoint",
+    values_to = "HIV_RNA"
+  ) %>%
+  mutate(
+    Timepoint   = recode(Timepoint,
+                         `HIV-RNA (baseline)`      = "Baseline",
+                         `HIV-RNA (follow-up)`     = "Follow-up"),
+    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup = factor(Subgroup, levels = c(
+      "Primary HIV infection",
+      "Severely impaired immunity",
+      "More preserved immunity",
+      "Elite controller"
+    ))
+  ) %>%
+  filter(!is.na(HIV_RNA))
+
+# 2) Plot: boxplots + paired lines + points, faceted by Subgroup
+p_rna <- ggplot(df_rna, aes(x = Timepoint, y = log10(HIV_RNA))) +
+  # boxplots (no outliers)
+  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
+  # lines connecting each ID
+  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
+  # points overlaid (vertical jitter)
+  geom_point(aes(color = Subgroup),
+             position = position_jitter(width = 0, height = 0.1),
+             size     = 2, alpha = 0.8) +
+  geom_hline(yintercept = log10(20),  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = log10(75),  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = log10(400),  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  # facets in one row
+  facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
+  scale_color_brewer(palette = "Set1") +
+  theme_classic() +
+  theme(
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    strip.background = element_rect(fill = "grey95", color = NA),
+    strip.text       = element_text(face = "bold"),
+    legend.position  = "none"
+  ) +
+  labs(
+    x     = NULL,
+    y     = "HIV-RNA log10(copies/mL)",
+    title = "HIV-RNA copies at baseline vs follow-up by HIV-1 subgroup"
+  )
+
+p_rna
+```
+
+## Figure S1B
+
+```{r}
+# 1) Prep data exactly as before
+df_cd4 <- metadata %>%
+  filter(Disease != "Healthy") %>%
+  select(ID, Subgroup,
+         `CD4 cell count (baseline)`,
+         `CD4 cell count (follow-up)`) %>%
+  pivot_longer(
+    cols      = c(`CD4 cell count (baseline)`, `CD4 cell count (follow-up)`),
+    names_to  = "Timepoint",
+    values_to = "CD4"
+  ) %>%
+  mutate(
+    Timepoint = recode(Timepoint,
+                       `CD4 cell count (baseline)`  = "Baseline",
+                       `CD4 cell count (follow-up)` = "Follow-up"),
+    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup = factor(Subgroup, levels = c(
+      "Primary HIV infection",
+      "Severely impaired immunity",
+      "More preserved immunity",
+      "Elite controller"
+    ))
+  ) %>%
+  filter(!is.na(CD4))
+
+# 2) Plot: boxplots + connecting lines + points, faceted
+p_cd4_lines_ref <- ggplot(df_cd4, aes(x = Timepoint, y = CD4)) +
+  # reference lines at 250 and 350
+  geom_hline(yintercept = 250, color = "gray50", linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = 350, color = "gray50", linetype = "dashed", alpha = 0.5) +
+  # boxplots (no outliers)
+  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
+  # connecting lines
+  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
+  # points
+  geom_point(aes(color = Subgroup),
+             position = position_jitter(width = 0, height = 0.2),
+             size     = 2, alpha = 0.8) +
+  facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
+  scale_color_brewer(palette = "Set1") +
+  theme_classic() +
+  theme(
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    strip.background = element_rect(fill = "grey95", color = NA),
+    strip.text       = element_text(face = "bold"),
+    legend.position  = "none"
+  ) +
+  labs(
+    x     = NULL,
+    y     = "CD4 T-cell count (cells/µL)",
+    title = "CD4 T-cell count at baseline vs follow-up by HIV-1 subgroup"
+  )
+
+p_cd4_lines_ref
+```
+
+## Figure S1C
+
+```{r}
+# 1) Build a long‐form data.frame of the CD4/CD8 ratios
+df_ratio <- metadata %>%
+  filter(Disease != "Healthy") %>%
+  select(ID, Subgroup,
+         `CD4/CD8 ratio (baseline)`,
+         `CD4/CD8 ratio (follow-up)`) %>%
+  pivot_longer(
+    cols      = c(`CD4/CD8 ratio (baseline)`, `CD4/CD8 ratio (follow-up)`),
+    names_to  = "Timepoint",
+    values_to = "Ratio"
+  ) %>%
+  mutate(
+    Timepoint   = recode(Timepoint,
+                         `CD4/CD8 ratio (baseline)`  = "Baseline",
+                         `CD4/CD8 ratio (follow-up)` = "Follow-up"),
+    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup = factor(Subgroup, levels = c(
+      "Primary HIV infection",
+      "Severely impaired immunity",
+      "More preserved immunity",
+      "Elite controller"
+    ))
+  ) %>%
+  filter(!is.na(Ratio))
+
+# 2) Plot: boxplots + paired lines + points + reference lines at 0.5 & 1
+p_ratio <- ggplot(df_ratio, aes(x = Timepoint, y = Ratio)) +
+  # reference lines (horizontal) at 0.5 and 1
+  geom_hline(yintercept = 0.5,  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = 1,  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  # boxplots
+  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
+  # lines connecting each ID
+  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
+  # points
+  geom_point(aes(color = Subgroup),
+             position = position_jitter(width = 0, height = 0.02),
+             size     = 2, alpha = 0.8) +
+  # facet by Subgroup
+  facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
+  # colors
+  scale_color_brewer(palette = "Set1") +
+  # clean theme
+  theme_classic() +
+  theme(
+    axis.text.x      = element_text(angle = 45, hjust = 1),
+    strip.background = element_rect(fill = "grey95", color = NA),
+    strip.text       = element_text(face = "bold"),
+    legend.position  = "none"
+  ) +
+  labs(
+    x     = NULL,
+    y     = "CD4/CD8 T-cell count ratio",
+    title = "CD4/CD8 T-cell count ratio at baseline vs follow-up by HIV-1 subgroup"
+  )
+
+p_ratio
+```
+
+# Save plots
+
+## Figure 1
+
+```{r}
+# Figure 1B
+ggsave("../plots/pdf/density/age_density_ridges_baseline_followup.pdf", plot = density_age, width = 14, height = 7)
+ggsave("../plots/png/density/age_density_ridges_baseline_followup.pdf", plot = density_age, width = 14, height = 7)
+
+# Figure 1C
+ggsave("../plots/pdf/bar/stacked_bar_sex_per_Subgroup.pdf", plot = bar_sex, width  = 10,height = 7)
+ggsave("../plots/png/bar/stacked_bar_sex_per_Subgroup.png", plot = bar_sex, width  = 10,height = 7)
+
+# Figure 1D
+ggsave("../plots/pdf/bar/barplot_cd4cd8_change.pdf", plot = bar_improvements, width = 10, height = 7)
+ggsave("../plots/png/bar/barplot_cd4cd8_change.png", plot = bar_improvements, width = 10, height = 7)
+
+# Figure 1E
+ggsave("../plots/pdf/sankey/sankey_plot.pdf", plot = sankey_plot, width = 18, height = 8)
+ggsave("../plots/png/sankey/sankey_plot.png", plot = sankey_plot, width = 18, height = 8)
+```
+
+## Compilations
+
+```{r}
+# Figure 1B, 1C, and 1D together
+
+# Remove y-axis elements from plots 2 and 3
+bar_sex <- bar_sex +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+bar_improvements <- bar_improvements +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+# Combine plots
+p_combined <- (density_age + bar_sex + bar_improvements) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+
+# Save
+ggsave("../plots/pdf/compilation/Figure_1B_1C_1D_together.pdf",
+       p_combined, width = 28, height = 7)
+
+ggsave("../plots/png/compilation/Figure_1B_1C_1D_together.png",
+       p_combined, width = 28, height = 7)
+```
+
+
+## Supplementary Figure 1
+
+```{r}
+# Figure S1A
+ggsave("../plots/pdf/boxplot/HIV_RNA_boxplots_with_lines_by_Subgroup.pdf", plot = p_rna, width = 12, height = 4)
+ggsave("../plots/png/boxplot/HIV_RNA_boxplots_with_lines_by_Subgroup.png", plot = p_rna, width = 12, height = 4)
+
+# Figure S1B
+ggsave("../plots/pdf/boxplot/CD4_boxplots_with_lines_by_Subgroup.pdf", plot = p_cd4_lines_ref, width = 12, height = 4)
+ggsave("../plots/png/boxplot/CD4_boxplots_with_lines_by_Subgroup.png", plot = p_cd4_lines_ref, width = 12, height = 4)
+
+# Figure S1C
+ggsave("../plots/pdf/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.pdf", plot = p_ratio, width = 12, height = 4)
+ggsave("../plots/png/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.png", plot = p_ratio, width = 12, height = 4)
+```
+
+
+# Save Tables
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+End of file.

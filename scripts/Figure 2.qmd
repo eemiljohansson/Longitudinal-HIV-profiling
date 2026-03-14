@@ -1,0 +1,827 @@
+---
+title: "Figure 2"
+format: html
+---
+
+# Setup
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(patchwork)
+library(ggridges)
+library(ggalluvial)
+library(forcats)
+library(HDAnalyzeR)
+library(ggConvexHull)
+library(UpSetR)
+
+# Specify function
+select <- dplyr::select
+filter <- dplyr::filter
+mutate <- dplyr::mutate
+rename <- dplyr::rename
+
+# Set ggplot2 defaults
+ggplot2::update_geom_defaults(
+  "point",
+  list(size = 2, alpha = 0.6)
+)
+
+# Source scripts
+source("../scripts/functions/themes_palettes.R")
+
+# Read data
+metadata <- read_csv("../data/metadata/metadata.csv")
+data_long <- read_csv("../data/data_long.csv")
+data_wide <- read_csv("../data/data_wide.csv")
+```
+
+# Figure 2
+
+## Figure 2A
+
+```{r}
+# 1. Define CD4/CD8 category levels (legend order)
+cd4cd8_levels <- c("Normal", "Low", "Very low")
+
+# 2. Define subgroup order
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+# 3. Prepare data
+cd4cd8_baseline <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (baseline)`)) %>%
+  mutate(
+    status   = factor(`CD4/CD8 status (baseline)`, levels = cd4cd8_levels),
+    Subgroup = factor(Subgroup, levels = subgroup_levels)
+  ) %>%
+  count(Subgroup, status)
+
+# 4. Calculate totals
+subgroup_totals <- cd4cd8_baseline %>%
+  group_by(Subgroup) %>%
+  summarise(total = sum(n), .groups = "drop")
+
+# 5. Create label vector that preserves subgroup names
+subgroup_labels <- setNames(
+  paste0(subgroup_totals$Subgroup, " (n=", subgroup_totals$total, ")"),
+  subgroup_totals$Subgroup
+)
+
+# 6. Plot
+p_cd4cd8_baseline <- ggplot(cd4cd8_baseline,
+                            aes(x = Subgroup, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 7
+  ) +
+  scale_fill_manual(
+    name = "CD4/CD8 T-cell count status",
+    values = c(
+      "Very low" = "#d95f02",
+      "Low"      = "grey80",
+      "Normal"   = "#1b9e77"
+    )
+  ) +
+  scale_x_discrete(labels = subgroup_labels) +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Baseline CD4/CD8 T-cell count status by HIV-1 subgroup",
+    x = "HIV-1 subgroup",
+    fill = "CD4/CD8 Status"
+  ) +
+  coord_flip() +
+  theme_hiv()
+
+p_cd4cd8_baseline
+```
+
+## Figure 2B
+
+```{r}
+input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+p_pca_baseline_subgroup <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Subgroup)) +
+  geom_point(
+    aes(size = `CD4/CD8 ratio (baseline)`),
+    alpha  = 0.7,
+    stroke = 0
+  ) +
+  geom_convexhull(
+    aes(fill = Subgroup, colour = Subgroup),
+    alpha = 0.2
+  ) +
+  scale_color_manual(values = Subgroup_colors,
+                     name = "HIV-1 subgroup") +
+  scale_fill_manual(values  = Subgroup_colors,
+                    name = "HIV-1 subgroup") +
+  scale_size_continuous(
+    name = "CD4/CD8 T-cell count ratio"
+  ) +
+  labs(
+    title = "Principal component analysis of the HIV-1 baseline plasma proteome",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  theme_hiv() +
+  coord_equal()
+
+p_pca_baseline_subgroup
+```
+
+## Figure 2C
+
+```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV", "Healthy")) |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subgroup != "Elite controller") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "PLWH (at baseline) vs Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_hiv_baseline_healthy <- de_results$de_res
+
+p_hiv_baseline_healthy <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_hiv_baseline_healthy$layers[[1]]$aes_params$size   <- 3
+p_hiv_baseline_healthy$layers[[1]]$aes_params$alpha  <- 0.7
+p_hiv_baseline_healthy$layers[[1]]$aes_params$stroke <- 0
+
+p_hiv_baseline_healthy
+```
+
+## Figure 2D
+
+```{r}
+highlighted_proteins <- de_res_hiv_baseline_healthy |>
+  filter(logFC > 0.5) |>
+  arrange(adj.P.Val) |>
+  slice_head(n = 10) |>
+  bind_rows(
+    de_res_hiv_baseline_healthy |>
+      filter(logFC < -0.5) |>
+      arrange(adj.P.Val) |>
+      slice_head(n = 5)
+  ) |>
+  pull(Feature)
+
+desired_order <- c(
+  "Primary HIV infection",
+  "Severely impaired immunity",
+  "More preserved immunity",
+  "Elite controller",
+  "Healthy"
+)
+
+p_plwh_baseline_boxplot <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subgroup %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subgroup = factor(Subgroup, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subgroup,
+    y     = NPX,
+    color = Subgroup,
+    fill  = Subgroup
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+        scale_color_manual(values = Subgroup_colors,
+                       name = "HIV-1 subgroup / Cohort") +
+    scale_fill_manual(values = Subgroup_colors,
+                      name = "HIV-1 subgroup / Cohort") +
+    labs(
+      title = "Top 10 most significantly increased and top 5 most significantly decreased proteins in PLWH at baseline vs healthy controls",
+      x     = "HIV-1 subgroup / Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # remove x-axis text
+  theme(
+    axis.text.x = element_blank()
+  )
+
+p_plwh_baseline_boxplot
+```
+
+## Figure 2E
+
+```{r}
+# --------------------------------------------------
+# 1. Combine all result tables
+# --------------------------------------------------
+
+all_res <- list(
+  PHI = res_phi_healthy,
+  SII = res_sii_healthy,
+  MPI = res_mpi_healthy,
+  EC  = res_ec_healthy_baseline
+) |>
+  imap_dfr(~ .x |> mutate(Comparison = .y))
+
+# --------------------------------------------------
+# 2. Classify significance
+# --------------------------------------------------
+
+plot_df <- all_res |>
+  mutate(
+    Comparison = factor(Comparison, levels = c("PHI", "SII", "MPI", "EC")),
+    Significance = case_when(
+      adj.P.Val < 0.05 & logFC > 0.5  ~ "Significant increased",
+      adj.P.Val < 0.05 & logFC < -0.5 ~ "Significant decreased",
+      TRUE                            ~ "Not significant"
+    )
+  ) |>
+  group_by(Comparison, Significance) |>
+  summarise(n = n(), .groups = "drop")
+
+# --------------------------------------------------
+# 3. Plot stacked barplot
+# --------------------------------------------------
+
+p_bar_subgroup_baseline_healthy <- plot_df |>
+  ggplot(aes(x = Comparison, y = n, fill = Significance)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = c(
+    "Significant increased" = "#C03830",
+    "Significant decreased" = "#317EC2",
+    "Not significant" = "grey80"
+  )) +
+  labs(
+    title = "Significant proteins & logFC > 0.5 across HIV-1 subgroups",
+    x = "Comparison",
+    y = "Number of proteins",
+    fill = "Significance"
+  ) +
+  theme_hiv()
+
+p_bar_subgroup_baseline_healthy
+```
+
+## Figure 2F
+
+```{r}
+fdr_cutoff <- 0.5
+
+set_colors <- c(
+  "#5A588B",  # EC
+  "#C89A1B",  # MPI
+  "#EABBBB",  # SII
+  "#4B988F"   # PHI
+)
+
+# --------------------------------------------------
+# 1. Define result list (reversed order)
+# --------------------------------------------------
+
+res_list_healthy <- list(
+  `EC vs. Healthy`  = res_ec_healthy_baseline,
+  `MPI vs. Healthy` = res_mpi_healthy,
+  `SII vs. Healthy` = res_sii_healthy,
+  `PHI vs. Healthy` = res_phi_healthy
+)
+
+# --------------------------------------------------
+# 2. Extract significantly increased proteins
+# --------------------------------------------------
+
+up_sets <- lapply(res_list_healthy, function(df) {
+  df |>
+    filter(
+      adj.P.Val < fdr_cutoff,
+      logFC > 0.5
+    ) |>
+    pull(Feature)
+})
+
+# --------------------------------------------------
+# 3. Sanity check
+# --------------------------------------------------
+
+message("Proteins per set:")
+print(sapply(up_sets, length))
+
+# --------------------------------------------------
+# 4. Convert list to UpSet matrix
+# --------------------------------------------------
+
+up_mat <- UpSetR::fromList(up_sets)
+
+# --------------------------------------------------
+# 5. Save UpSet plot
+# --------------------------------------------------
+
+pdf(
+  "../plots/pdf/overlap/upset_increased_proteins_sii_mpi_phi_ec_healthy.pdf",
+  width = 14,
+  height = 6,
+  onefile = FALSE
+)
+
+print(
+  upset(
+  up_mat,
+  sets = names(up_sets),
+  order.by = "freq",
+  empty.intersections = "off",
+  keep.order = TRUE,
+  sets.bar.color = set_colors,
+  mainbar.y.label = "Number of proteins",
+  sets.x.label = "Proteins per comparison",
+  text.scale = c(2, 2, 2, 2, 2, 3)
+)
+)
+
+dev.off()
+```
+
+## Figure 2G
+
+```{r}
+library(dplyr)
+library(UpSetR)
+
+fdr_cutoff <- 0.5
+
+set_colors <- c(
+  "#5A588B",  # EC
+  "#C89A1B",  # MPI
+  "#EABBBB",  # SII
+  "#4B988F"   # PHI
+)
+
+# --------------------------------------------------
+# 1. Define result list (reversed order)
+# --------------------------------------------------
+
+res_list_healthy <- list(
+  `EC vs. Healthy`  = res_ec_healthy_baseline,
+  `MPI vs. Healthy` = res_mpi_healthy,
+  `SII vs. Healthy` = res_sii_healthy,
+  `PHI vs. Healthy` = res_phi_healthy
+)
+
+# --------------------------------------------------
+# 2. Extract significantly decreased proteins
+# --------------------------------------------------
+
+down_sets <- lapply(res_list_healthy, function(df) {
+  df |>
+    filter(
+      adj.P.Val < fdr_cutoff,
+      logFC < -0.5
+    ) |>
+    pull(Feature)
+})
+
+# --------------------------------------------------
+# 3. Sanity check
+# --------------------------------------------------
+
+message("Proteins per set:")
+print(sapply(down_sets, length))
+
+# --------------------------------------------------
+# 4. Convert list to UpSet matrix
+# --------------------------------------------------
+
+down_mat <- UpSetR::fromList(down_sets)
+
+# --------------------------------------------------
+# 5. Save UpSet plot
+# --------------------------------------------------
+
+pdf(
+  "../plots/pdf/overlap/upset_decreased_proteins_sii_mpi_phi_ec_healthy.pdf",
+  width = 14,
+  height = 6,
+  onefile = FALSE
+)
+
+print(
+  upset(
+    down_mat,
+    sets = names(down_sets),
+    order.by = "freq",
+    empty.intersections = "off",
+    keep.order = TRUE,
+    nintersects = NA,
+    sets.bar.color = set_colors,
+    mainbar.y.label = "Number of proteins",
+    sets.x.label = "Proteins per comparison",
+    text.scale = c(2, 2, 2, 2, 2, 3)
+  )
+)
+
+dev.off()
+```
+
+# Save plots
+
+## Figure 2
+
+```{r}
+# Figure 2A
+ggsave("../plots/pdf/bar/stacked_bar_cd4cd8_baseline.pdf", plot = p_cd4cd8_baseline, width  = 16, height = 7)
+ggsave("../plots/png/bar/stacked_bar_cd4cd8_baseline.png", plot = p_cd4cd8_baseline, width  = 16, height = 7)
+
+# Figure 2B
+ggsave("../plots/pdf/pca/pca_baseline_subgroup.pdf", plot = p_pca_baseline_subgroup, width  = 16, height = 7)
+ggsave("../plots/png/pca/pca_baseline_subgroup.png", plot = p_pca_baseline_subgroup, width  = 16, height = 7)
+
+# Figure 2C
+ggsave("../plots/pdf/volcano/volcano_hiv_baseline_healthy.pdf", plot = p_hiv_baseline_healthy, width  = 14, height = 7)
+ggsave("../plots/png/volcano/volcano_hiv_baseline_healthy.png", plot = p_hiv_baseline_healthy, width  = 14, height = 7)
+
+# Figure 2D
+ggsave("../plots/pdf/boxplot/box_highlighted_proteins.pdf", plot = p_plwh_baseline_boxplot, width  = 16, height = 10)
+ggsave("../plots/png/boxplot/box_highlighted_proteins.png", plot = p_plwh_baseline_boxplot, width  = 16, height = 10, dpi = 300)
+
+# Figure 2E
+ggsave("../plots/pdf/bar/bar_subgroup_baseline_healthy.pdf", plot = p_bar_subgroup_baseline_healthy, width  = 10, height = 12)
+ggsave("../plots/png/bar/bar_subgroup_baseline_healthy.png", plot = p_bar_subgroup_baseline_healthy, width  = 10, height = 12, dpi = 300)
+```
+
+# Supplementary Figure 2
+
+## Figure S2A
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subgroup %in% c("Primary HIV infection", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Primary HIV-1 infection (at baseline) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_phi_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  ) +
+  xlim(c(-2.5, 5))
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_phi_baseline_healthy <- p
+```
+
+## Figure S2B
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subgroup %in% c("Severely impaired immunity", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Severely impaired immunity (at baseline) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_sii_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  ) +
+  xlim(c(-2.5, 5))
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_sii_baseline_healthy <- p
+```
+
+## Figure S2C
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subgroup %in% c("More preserved immunity", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "More preserved immunity (at baseline) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_mpi_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  ) +
+  xlim(c(-2.5, 5))
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_mpi_baseline_healthy <- p
+```
+
+## Figure S2D
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Follow-up") |> 
+  filter(Subgroup %in% c("Elite controller", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Elite controller (at baseline) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_healthy_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  ) +
+  xlim(c(-2.5, 5))
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_baseline_healthy <- p
+```
+
+# Save plots
+
+## Supplementary Figure 2
+
+```{r}
+# Figure (S2A + S2B) / (S2C + S2D)
+p_supplementary_2 <- (p_volcano_phi_baseline_healthy + p_volcano_sii_baseline_healthy) /
+  (p_volcano_mpi_baseline_healthy + p_volcano_ec_baseline_healthy) +
+  # collect legends top
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+
+ggsave("../plots/pdf/volcano/volcano_supplementary_2.pdf", plot = p_supplementary_2, width = 16, height = 14)
+```
+
+# Supplementary Figure 3
+
+```{r}
+
+```
+
+
+# Save Tables
+
+```{r}
+
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+End of file.

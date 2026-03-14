@@ -1,0 +1,263 @@
+---
+title: "Figure 3"
+format: html
+---
+
+# Setup
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(patchwork)
+library(ggridges)
+library(ggalluvial)
+library(forcats)
+library(HDAnalyzeR)
+library(ggConvexHull)
+library(UpSetR)
+
+# Specify function
+select <- dplyr::select
+filter <- dplyr::filter
+mutate <- dplyr::mutate
+rename <- dplyr::rename
+
+# Set ggplot2 defaults
+ggplot2::update_geom_defaults(
+  "point",
+  list(size = 2, alpha = 0.6)
+)
+
+# Source scripts
+source("../scripts/functions/themes_palettes.R")
+
+# Read data
+metadata <- read_csv("../data/metadata/metadata.csv")
+data_long <- read_csv("../data/data_long.csv")
+data_wide <- read_csv("../data/data_wide.csv")
+```
+
+# Figure 3
+
+## Figure 3A
+
+```{r}
+# 1. Define CD4/CD8 category levels (legend order)
+cd4cd8_levels <- c("Normal", "Low", "Very low")
+
+# 2. Define subgroup order
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+cd4cd8_followup <- cd4cd8_followup |>
+  mutate(Subgroup = factor(Subgroup, levels = subgroup_levels))
+
+p_cd4cd8_followup <- ggplot(cd4cd8_followup,
+                            aes(x = Subgroup, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  
+  # Larger numbers inside bars
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 7
+  ) +
+  
+  scale_fill_manual(
+    name = "CD4/CD8 T-cell count status",
+    values = c(
+      "Very low" = "#d95f02",
+      "Low"      = "grey80",
+      "Normal"   = "#1b9e77"
+    )
+  ) +
+  
+  scale_x_discrete(labels = subgroup_labels_fu) +
+  
+  # Ensure axis numbers appear
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals",
+    breaks = scales::pretty_breaks(n = 5)
+  ) +
+  
+  labs(
+  title = "Follow-up CD4/CD8 T-cell count status by HIV-1 subgroup",
+  x = "HIV-1 subgroup",
+  y = "Number of individuals",
+  fill = "CD4/CD8 Status"
+) +
+  
+  coord_flip() +
+  theme_hiv()
+
+p_cd4cd8_followup
+```
+
+## Figure 3B
+
+```{r}
+
+```
+
+## Figure 3C
+
+```{r}
+
+```
+
+## Figure 3D
+
+```{r}
+
+```
+
+## Figure 3E
+
+```{r}
+
+```
+
+## Figure 3F
+
+```{r}
+
+```
+
+## Figure 3G
+
+```{r}
+
+```
+
+# Save plots
+
+## Figure 3
+
+```{r}
+# Figure 3A
+ggsave("../plots/pdf/bar/stacked_bar_cd4cd8_followup.pdf", plot = p_cd4cd8_followup, width  = 16, height = 7)
+ggsave("../plots/png/bar/stacked_bar_cd4cd8_followup.png", plot = p_cd4cd8_followup, width  = 16, height = 7)
+```
+
+## Supplementary Figure 3
+
+### Supplementary Figure 3A
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+proteins_of_interest <- c("SIGLEC1", "LGALS9")
+
+# ---------------------------
+# Prepare data (LOG10 HIV RNA)
+# ---------------------------
+scatter_data <- metadata |>
+  filter(
+    Disease == "HIV",
+    Subgroup %in% c(
+      "Primary HIV Infection",
+      "More preserved immunity",
+      "Severely impaired immunity"
+    )
+  ) |>
+  mutate(
+    HIVRNA_log10 = log10(`HIV-RNA (baseline)` + 1)  # 🔑 log-transform here
+  ) |>
+  select(
+    DAid,
+    HIVRNA_log10
+  ) |>
+  filter(!is.na(HIVRNA_log10)) |>
+  inner_join(data_wide, by = "DAid") |>
+  pivot_longer(
+    -c(DAid, HIVRNA_log10),
+    names_to  = "Assay",
+    values_to = "NPX"
+  ) |>
+  filter(
+    Assay %in% proteins_of_interest,
+    !is.na(NPX)
+  ) |>
+  left_join(
+    metadata %>% select(DAid, Subgroup),
+    by = "DAid"
+  )
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_hivrna_corr <- ggplot(
+  scatter_data,
+  aes(x = HIVRNA_log10, y = NPX, color = Subgroup, fill = Subgroup)
+) +
+  geom_point(
+    alpha = 0.7,
+    size = 2
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    linewidth = 0.8
+  ) +
+  ggpubr::stat_cor(
+    method = "spearman",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  facet_wrap(~ Assay, scales = "free_y") +
+  theme_minimal(base_size = 14) +
+  theme_hiv() +
+  labs(
+    x = expression(log[10] * " HIV RNA at baseline (copies/mL)"),
+    y = "Protein level (NPX)",
+    title = "Baseline HIV RNA vs protein levels",
+    subtitle = "SIGLEC1 and LGALS9 (pooled HIV subgroups)"
+  )
+
+p_hivrna_corr
+
+
+ggsave(
+  filename = "HIVRNA_vs_SIGLEC1_LGALS9.png",
+  plot     = p_hivrna_corr,
+  path     = "../plots/png/scatter/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "HIVRNA_vs_SIGLEC1_LGALS9.pdf",
+  plot     = p_hivrna_corr,
+  path     = "../plots/pdf/scatter/",
+  width    = 10,
+  height   = 7
+)
+```
+
+# Save Tables
+
+```{r}
+
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
+End of file.
