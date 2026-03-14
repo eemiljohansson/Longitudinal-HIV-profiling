@@ -18,6 +18,7 @@ This repository includes the code to generate the results describe above:
 📁 AML-profiling/
 ├── 📂 scripts/                # Core analysis scripts (Quarto)
 │   ├── Figure 1.qmd                  # Study overview and cohort sumary
+│   ├── Table 1.qmd                   # HIV-1 subgroup characteristics
 │   ├── Figure 2.qmd                  # Baseline characteristics
 │   ├── Figure 3.qmd                  # Follow-up characteristics
 │   ├── Figure 4.qmd                  # Comparison with cardiometabolic signals
