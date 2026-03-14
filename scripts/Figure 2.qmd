@@ -1184,19 +1184,521 @@ ggsave("../plots/png/volcano/volcano_supplementary_4.png", plot = p_supplementar
 ## Figure S5A
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |> 
+  filter(Disease %in% c("HIV")) 
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+# Split the data into training and test sets
+hd_split <- hd_split_data(hd_obj, variable = "Subgroup",
+                          metadata_cols = NULL,
+                          ratio = 0.7,
+                          seed = 123)
+
+model_output_lasso_only_proteins_baseline <- hd_model_rreg(
+  dat = hd_split,
+  variable = "Subgroup",
+  case = NULL,
+  balance_groups = TRUE,
+  cor_threshold = 1,
+  grid_size = 30,
+  cv_sets = 5,
+  mixture = 1,
+  palette = NULL,
+  plot_y_labels = TRUE,
+  verbose = FALSE,
+  plot_title = c("accuracy", "sensitivity", "specificity", "auc", "features",
+    "top-features", "mixture"),
+  seed = 123
+)
+
+model_output_lasso_only_proteins_baseline
+```
+
+```{r}
+library(dplyr)
+library(purrr)
+library(HDAnalyzeR)
+
+# --------------------------------------------------
+# Prepare metadata
+# --------------------------------------------------
+
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |>
+  filter(Disease == "HIV") |>
+  mutate(
+    Subgroup = factor(Subgroup)
+  )
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# Function to check valid split
+# --------------------------------------------------
+
+valid_split <- function(split_obj) {
+
+  train_groups <- unique(split_obj$train_data$Subgroup)
+  test_groups  <- unique(split_obj$test_data$Subgroup)
+
+  all_levels <- levels(input_metadata$Subgroup)
+
+  all(all_levels %in% train_groups) &&
+    all(all_levels %in% test_groups)
+}
+
+# --------------------------------------------------
+# Run multiple safe splits
+# --------------------------------------------------
+
+n_splits <- 100
+model_results <- list()
+split_objects <- list()
+
+i <- 1
+seed <- 1
+
+while (i <= n_splits) {
+
+  message("Trying split with seed ", seed)
+
+  split_candidate <- hd_split_data(
+    hd_obj,
+    variable = "Subgroup",
+    ratio = 0.7,
+    seed = seed
+  )
+
+  if (valid_split(split_candidate)) {
+
+    message("✓ Valid split found")
+
+    split_objects[[i]] <- split_candidate
+
+    model_results[[i]] <- hd_model_rreg(
+      dat = split_candidate,
+      variable = "Subgroup",
+      case = NULL,
+      balance_groups = FALSE,  # IMPORTANT
+      cor_threshold = 1,
+      grid_size = 30,
+      cv_sets = 5,
+      mixture = 1,
+      palette = NULL,
+      plot_y_labels = TRUE,
+      verbose = FALSE,
+      seed = seed
+    )
+
+    i <- i + 1
+  }
+
+  seed <- seed + 1
+}
+
+names(model_results) <- paste0("split_", seq_len(n_splits))
+```
+
+```{r}
+library(dplyr)
+library(purrr)
+library(ggplot2)
+
+# --------------------------------------------------
+# 1. Extract feature importance from all splits
+# --------------------------------------------------
+
+feature_importance_df <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+
+    model$features |>
+      mutate(Split = split_name)
+
+  }
+)
+
+# --------------------------------------------------
+# 2. Remove zero importance features
+# --------------------------------------------------
+
+feature_importance_df <- feature_importance_df |>
+  filter(Scaled_Importance > 0)
+
+# --------------------------------------------------
+# 3. Compute how many splits each protein appears in
+# --------------------------------------------------
+
+feature_importance_df <- feature_importance_df |>
+  group_by(Class, Feature) |>
+  mutate(
+    n_selected = n_distinct(Split)
+  ) |>
+  ungroup()
+
+# --------------------------------------------------
+# 4. Keep proteins selected >5 times
+# --------------------------------------------------
+
+feature_importance_df <- feature_importance_df |>
+  filter(n_selected > 5)
+
+# --------------------------------------------------
+# 5. Identify top proteins per class
+# --------------------------------------------------
+
+top_features <- feature_importance_df |>
+  group_by(Class, Feature) |>
+  summarise(
+    mean_importance = mean(Scaled_Importance),
+    .groups = "drop"
+  ) |>
+  group_by(Class) |>
+  slice_max(mean_importance, n = 15)
+
+plot_df <- feature_importance_df |>
+  semi_join(top_features, by = c("Class", "Feature"))
+
+# --------------------------------------------------
+# 6. Create labels with selection frequency
+# --------------------------------------------------
+
+plot_df <- plot_df |>
+  mutate(
+    Feature_label = paste0(Feature, " (n=", n_selected, ")")
+  )
+
+# --------------------------------------------------
+# 7. Order features by median importance
+# --------------------------------------------------
+
+feature_order <- plot_df |>
+  group_by(Feature_label) |>
+  summarise(
+    median_importance = median(Scaled_Importance),
+    .groups = "drop"
+  ) |>
+  arrange(median_importance) |>
+  pull(Feature_label)
+
+plot_df <- plot_df |>
+  mutate(
+    Feature_label = factor(Feature_label, levels = feature_order)
+  )
+
+# --------------------------------------------------
+# 8. Plot
+# --------------------------------------------------
+
+p_feature_stability <- ggplot(
+  plot_df,
+  aes(
+    x = Feature_label,
+    y = Scaled_Importance,
+    fill = Class
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.shape = NA
+  ) +
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.6
+  ) +
+  coord_flip() +
+  facet_wrap(~Class, scales = "free_y") +
+  scale_fill_manual(values = Subgroup_colors) +
+  theme_hiv() +
+  labs(
+    title = "Protein importance stability across model splits",
+    x = "Protein",
+    y = "Scaled feature importance",
+    fill = "HIV subgroup"
+  )
+
+p_feature_stability
+
+# --------------------------------------------------
+# 9. Save figure
+# --------------------------------------------------
+
+ggsave(
+  filename = "Feature_importance_stability_across_splits_scaled.pdf",
+  path     = "../plots/pdf/model/",
+  plot     = p_feature_stability,
+  width    = 16,
+  height   = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_across_splits_scaled.png",
+  path     = "../plots/png/model/",
+  plot     = p_feature_stability,
+  width    = 16,
+  height   = 10
+)
 ```
 
 ## Figure S5B
 
 ```{r}
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+library(pROC)
 
+# --------------------------------------------------
+# 1. Extract ROC curves from all splits
+# --------------------------------------------------
+
+roc_all <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+    
+    model$roc_curve$data |>
+      mutate(Split = split_name)
+    
+  }
+)
+
+# --------------------------------------------------
+# 2. Clean ROC curves
+# --------------------------------------------------
+
+roc_clean <- roc_all |>
+  select(.level, Split, specificity, sensitivity) |>
+  filter(!is.na(specificity), !is.na(sensitivity)) |>
+  group_by(.level, Split, specificity) |>
+  summarise(
+    sensitivity = mean(sensitivity),
+    .groups = "drop"
+  ) |>
+  arrange(.level, Split, specificity)
+
+# --------------------------------------------------
+# 3. Interpolation grid
+# --------------------------------------------------
+
+spec_grid <- seq(0, 1, length.out = 200)
+
+# --------------------------------------------------
+# 4. Interpolate ROC curves
+# --------------------------------------------------
+
+roc_interp <- roc_clean |>
+  group_by(.level, Split) |>
+  group_modify(~{
+
+    df <- arrange(.x, specificity)
+
+    approx_res <- approx(
+      x = df$specificity,
+      y = df$sensitivity,
+      xout = spec_grid,
+      rule = 2
+    )
+
+    tibble(
+      specificity = approx_res$x,
+      sensitivity = approx_res$y
+    )
+
+  }) |>
+  ungroup()
+
+# --------------------------------------------------
+# 5. Mean ROC curve
+# --------------------------------------------------
+
+roc_mean <- roc_interp |>
+  group_by(.level, specificity) |>
+  summarise(
+    mean_sensitivity = mean(sensitivity),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 6. Compute AUC per split
+# --------------------------------------------------
+
+auc_df <- roc_interp |>
+  group_by(.level, Split) |>
+  summarise(
+    auc = as.numeric(pROC::auc(1 - specificity, sensitivity)),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 7. Mean AUC + 95% CI
+# --------------------------------------------------
+
+auc_summary <- auc_df |>
+  group_by(.level) |>
+  summarise(
+    mean_auc = mean(auc),
+    lower_ci = quantile(auc, 0.025),
+    upper_ci = quantile(auc, 0.975),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 8. Plot ROC curves
+# --------------------------------------------------
+
+p_roc_mean <- ggplot(
+  roc_mean,
+  aes(
+    x = 1 - specificity,
+    y = mean_sensitivity,
+    colour = .level
+  )
+) +
+  geom_line(linewidth = 1.3) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+  facet_wrap(~.level) +
+  geom_text(
+    data = auc_summary,
+    aes(
+      x = 0.6,
+      y = 0.1,
+      label = paste0(
+        "AUC = ",
+        round(mean_auc, 2),
+        " (",
+        round(lower_ci, 2),
+        "–",
+        round(upper_ci, 2),
+        ")"
+      )
+    ),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+  scale_color_manual(values = Subgroup_colors) +
+  theme_hiv() +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity",
+    colour = "HIV subgroup",
+    title = "Mean ROC curves across model splits"
+  )
+
+p_roc_mean
+
+# --------------------------------------------------
+# 9. Save
+# --------------------------------------------------
+
+ggsave(
+  "../plots/pdf/model/Mean_ROC_per_HIV_subgroup.pdf",
+  p_roc_mean,
+  width = 14,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/model/Mean_ROC_per_HIV_subgroup.png",
+  p_roc_mean,
+  width = 14,
+  height = 7
+)
 ```
 
 ## Figure S5C
 
 ```{r}
+highlighted_proteins <- c("SERPINA12", "APOH", "IL17RB", "EPCAM", "PON2", "CD28", "CD79B", "WASF8", "SKAP1", "LRRN1")
 
+desired_order <- c(
+  "Primary HIV infection",
+  "Severely impaired immunity",
+  "More preserved immunity",
+  "Elite controller",
+  "Healthy"
+)
+
+p_plwh_baseline_boxplot_ml <- data_long %>%
+  dplyr::select(DAid, Assay, NPX) %>%
+  right_join(
+    metadata %>% filter(Timepoint != "Follow-up"),
+    by = "DAid"
+  ) %>%
+  dplyr::filter(
+    Assay %in% highlighted_proteins,
+    Subgroup %in% desired_order
+  ) %>%
+  mutate(
+    Assay       = factor(Assay, levels = highlighted_proteins),
+    Subgroup = factor(Subgroup, levels = desired_order)
+  ) %>%
+  ggplot(aes(
+    x     = Subgroup,
+    y     = NPX,
+    color = Subgroup,
+    fill  = Subgroup
+  )) +
+    geom_quasirandom(
+      alpha  = 0.7,
+      stroke = 0,
+      show.legend = FALSE
+    ) +
+    geom_boxplot(
+      color = "black",
+      outlier.shape = NA,
+      alpha = 0.6
+    ) +
+    facet_wrap(~ Assay, ncol = 1, scales = "free_y") +
+        scale_color_manual(values = Subgroup_colors,
+                       name = "HIV-1 subgroup / Cohort") +
+    scale_fill_manual(values = Subgroup_colors,
+                      name = "HIV-1 subgroup / Cohort") +
+    labs(
+      title = "Frequently selected proteins from multivariate LASSO model across splits",
+      x     = "HIV-1 subgroup / Cohort",
+      y     = "NPX"
+    ) +
+  theme_hiv() +
+  # remove x-axis text
+  theme(
+    axis.text.x = element_blank()
+  )
+
+p_plwh_baseline_boxplot_ml
+
+ggsave(
+  "../plots/pdf/model/Boxplot_top_ML_proteins.pdf",
+  p_plwh_baseline_boxplot_ml,
+  width = 10,
+  height = 28
+)
 ```
 
 ## Figure S5D
