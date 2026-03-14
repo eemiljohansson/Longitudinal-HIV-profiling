@@ -30,6 +30,7 @@ ggplot2::update_geom_defaults(
 
 # Source scripts
 source("../scripts/functions/themes_palettes.R")
+source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
 metadata <- read_csv("../data/metadata/metadata.csv")
@@ -807,10 +808,420 @@ ggsave("../plots/pdf/volcano/volcano_supplementary_2.pdf", plot = p_supplementar
 
 # Supplementary Figure 3
 
+## Figure S3A
+
+```{r}
+set.seed(123)
+
+phi_healthy_go_bp <- hd_gsea(res_phi_healthy,
+                             database = "GO",
+                             ontology = "BP",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+sii_healthy_go_bp <- hd_gsea(res_sii_healthy,
+                             database = "GO",
+                             ontology = "BP",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+mpi_healthy_go_bp <- hd_gsea(res_mpi_healthy,
+                             database = "GO",
+                             ontology = "BP",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+ec_healthy_go_bp <- hd_gsea(res_ec_healthy_baseline,
+                             database = "GO",
+                             ontology = "BP",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+gsea_go_hiv_healthy <- sii_healthy_go_bp$enrichment@result |> mutate(Comparison = "Severely impaired infection vs Healthy") |>
+  bind_rows(mpi_healthy_go_bp$enrichment@result |> mutate(Comparison = "More preserved infection vs Healthy")) |>
+  bind_rows(phi_healthy_go_bp$enrichment@result |> mutate(Comparison = "Primary HIV-1 vs Healthy")) |>
+  bind_rows(ec_healthy_go_bp$enrichment@result |> mutate(Comparison = "Elite controller vs Healthy"))
+
+p_gsea_go_bp_baseline <- gsea_go_hiv_healthy %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(x = "Comparison", y = "GO Biological Process", color = "Normalized Enrichment Score (NES)", size = "-log10(p.adjust)") +
+  theme_hiv() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_go_bp_baseline
+```
+
+## Figure S3B
+
+```{r}
+set.seed(123)
+
+phi_healthy_kegg <- hd_gsea(res_phi_healthy,
+                             database = "KEGG",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+sii_healthy_kegg <- hd_gsea(res_sii_healthy,
+                             database = "KEGG",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+mpi_healthy_kegg <- hd_gsea(res_mpi_healthy,
+                             database = "KEGG",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+ec_healthy_kegg <- hd_gsea(res_ec_healthy_baseline,
+                             database = "KEGG",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+gsea_kegg_hiv_healthy <- sii_healthy_kegg$enrichment@result |> mutate(Comparison = "Severely impaired infection vs Healthy") |>
+  bind_rows(mpi_healthy_kegg$enrichment@result |> mutate(Comparison = "More preserved infection vs Healthy")) |>
+  bind_rows(phi_healthy_kegg$enrichment@result |> mutate(Comparison = "Primary HIV-1 vs Healthy")) |>
+  bind_rows(ec_healthy_kegg$enrichment@result |> mutate(Comparison = "Elite controllers vs Healthy"))
+
+p_gsea_kegg_baseline <- gsea_kegg_hiv_healthy %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(x = "Comparison", y = "KEGG Pathway", color = "Normalized Enrichment Score (NES)", size = "-log10(p.adjust)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_kegg_baseline
+```
+
+## Figure S3C
+
+```{r}
+set.seed(123)
+
+sii_healthy_reactome <- hd_gsea(res_sii_healthy,
+                             database = "Reactome",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+mpi_healthy_reactome <- hd_gsea(res_mpi_healthy,
+                             database = "Reactome",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+phi_healthy_reactome <- hd_gsea(res_phi_healthy,
+                             database = "Reactome",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+ec_healthy_reactome <- hd_gsea(res_ec_healthy_baseline,
+                             database = "Reactome",
+                             ranked_by = "logFC",
+                             pval_lim = 0.05)
+
+gsea_reactome_hiv_healthy <- sii_healthy_reactome$enrichment@result |> mutate(Comparison = "Severely impaired infection vs Healthy") |>
+  bind_rows(mpi_healthy_reactome$enrichment@result |> mutate(Comparison = "More preserved infection vs Healthy")) |>
+  bind_rows(phi_healthy_reactome$enrichment@result |> mutate(Comparison = "Primary HIV-1 vs Healthy")) |>
+  bind_rows(ec_healthy_reactome$enrichment@result |> mutate(Comparison = "Elite controllers vs Healthy"))
+
+p_gsea_reactome_baseline <- gsea_reactome_hiv_healthy %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(x = Comparison, y = reorder(Description, NES), color = NES, size = -log10(p.adjust))) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(x = "Comparison", y = "Reactome", color = "Normalized Enrichment Score (NES)", size = "-log10(p.adjust)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_reactome_baseline
+```
+
+# Save plots
+
+```{r}
+# Figure S3A
+ggsave("../plots/pdf/gsea/gsea_go_bp_baseline.pdf", plot = p_gsea_go_bp_baseline, width = 16, height = 10)
+ggsave("../plots/png/gsea/gsea_go_bp_baseline.png", plot = p_gsea_go_bp_baseline, width = 16, height = 10, dpi = 300)
+
+# Figure S3B
+ggsave("../plots/pdf/gsea/gsea_kegg_baseline.pdf", plot = p_gsea_kegg_baseline, width = 8, height = 6)
+ggsave("../plots/png/gsea/gsea_kegg_baseline.png", plot = p_gsea_kegg_baseline, width = 8, height = 6, dpi = 300)
+
+# Figure S3C
+ggsave("../plots/pdf/gsea/gsea_reactome_baseline.pdf", plot = p_gsea_reactome_baseline, width = 10, height = 6)
+ggsave("../plots/png/gsea/gsea_reactome_baseline.png", plot = p_gsea_reactome_baseline, width = 10, height = 6, dpi = 300)
+```
+
+# Supplementary Figure 4
+
+## Figure S4A
+
+```{r}
+phi_vs_plwh_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Primary HIV infection",
+  control_groups = c(
+    "More preserved immunity",
+    "Severely impaired immunity"
+  )
+)
+
+phi_vs_plwh_baseline$volcano_plot
+```
+
+## Figure S4B
+
+```{r}
+phi_vs_mpi_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Primary HIV infection",
+  control_groups = c(
+    "More preserved immunity"
+  )
+)
+
+phi_vs_mpi_baseline$volcano_plot
+```
+
+## Figure S4C
+
+```{r}
+phi_vs_sii_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Primary HIV infection",
+  control_groups = c(
+    "Severely impaired immunity"
+  )
+)
+
+phi_vs_sii_baseline$volcano_plot
+```
+
+## Figure S4D
+
+```{r}
+phi_vs_ec_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Primary HIV infection",
+  control_groups = c(
+    "Elite controller"
+  )
+)
+
+phi_vs_ec_baseline$volcano_plot
+```
+
+## Figure S4E
+
+```{r}
+sii_vs_plwh_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Severely impaired immunity",
+  control_groups = c(
+    "More preserved immunity",
+    "Primary HIV infection"
+  )
+)
+
+sii_vs_plwh_baseline$volcano_plot
+```
+
+## Figure S4F
+
+```{r}
+sii_vs_phi_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Severely impaired immunity",
+  control_groups = c(
+    "Primary HIV infection"
+  )
+)
+
+sii_vs_phi_baseline$volcano_plot
+```
+
+## Figure S4G
+
+```{r}
+sii_vs_mpi_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Severely impaired immunity",
+  control_groups = c(
+    "More preserved immunity"
+  )
+)
+
+sii_vs_mpi_baseline$volcano_plot
+```
+
+## Figure S4H
+
+```{r}
+sii_vs_ec_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "Severely impaired immunity",
+  control_groups = c(
+    "More preserved immunity"
+  )
+)
+
+sii_vs_ec_baseline$volcano_plot
+```
+
+## Figure S4I
+
+```{r}
+mpi_vs_plwh_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "More preserved immunity",
+  control_groups = c(
+    "Primary HIV infection",
+    "Severely impaired immunity"
+  )
+)
+
+mpi_vs_plwh_baseline$volcano_plot
+```
+
+## Figure S4J
+
+```{r}
+mpi_vs_phi_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "More preserved immunity",
+  control_groups = c(
+    "Primary HIV infection"
+  )
+)
+
+mpi_vs_phi_baseline$volcano_plot
+```
+
+## Figure S4K
+
+```{r}
+mpi_vs_sii_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "More preserved immunity",
+  control_groups = c(
+    "Severely impaired immunity"
+  )
+)
+
+mpi_vs_sii_baseline$volcano_plot
+```
+
+## Figure S4L
+
+```{r}
+mpi_vs_ec_baseline <- run_hiv_de(
+  metadata,
+  data_wide,
+  case_group = "More preserved immunity",
+  control_groups = c(
+    "Elite controller"
+  )
+)
+
+mpi_vs_ec_baseline$volcano_plot
+```
+
+# Save plots
+
+## Supplementary Figure 4
+
+```{r}
+p_supplementary_4 <- (
+  phi_vs_plwh_baseline$volcano_plot +
+  phi_vs_mpi_baseline$volcano_plot +
+  phi_vs_sii_baseline$volcano_plot +
+  phi_vs_ec_baseline$volcano_plot +
+  
+  sii_vs_plwh_baseline$volcano_plot +
+  sii_vs_phi_baseline$volcano_plot +
+  sii_vs_mpi_baseline$volcano_plot +
+  sii_vs_ec_baseline$volcano_plot +
+  
+  mpi_vs_plwh_baseline$volcano_plot +
+  mpi_vs_phi_baseline$volcano_plot +
+  mpi_vs_sii_baseline$volcano_plot +
+  mpi_vs_ec_baseline$volcano_plot
+) +
+  plot_layout(
+    ncol = 4,
+    nrow = 3,
+    guides = "collect"
+  ) &
+  #plot_annotation(tag_levels = "A") &
+  theme(legend.position = "top") &
+  xlim(c(-2, 3))
+
+ggsave("../plots/pdf/volcano/volcano_supplementary_4.pdf", plot = p_supplementary_4, width = 30, height = 24)
+ggsave("../plots/png/volcano/volcano_supplementary_4.png", plot = p_supplementary_4, width = 30, height = 24, dpi = 300)
+```
+
+# Supplementary Figure 5
+
+## Figure S5A
+
 ```{r}
 
 ```
 
+## Figure S5B
+
+```{r}
+
+```
+
+## Figure S5C
+
+```{r}
+
+```
+
+## Figure S5D
+
+```{r}
+
+```
+
+## Figure S5E
+
+```{r}
+
+```
+
+## Figure S5F
+
+```{r}
+
+```
+
+## Figure S5G
+
+```{r}
+
+```
 
 # Save Tables
 
