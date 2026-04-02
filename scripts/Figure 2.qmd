@@ -1701,30 +1701,6 @@ ggsave(
 )
 ```
 
-## Figure S5D
-
-```{r}
-
-```
-
-## Figure S5E
-
-```{r}
-
-```
-
-## Figure S5F
-
-```{r}
-
-```
-
-## Figure S5G
-
-```{r}
-
-```
-
 # Save Tables
 
 ```{r}
