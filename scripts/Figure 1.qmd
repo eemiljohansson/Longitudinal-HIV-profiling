@@ -5,8 +5,6 @@ format: html
 
 # Setup
 
-## Load libraries
-
 ```{r}
 # Load libraries
 library(tidyverse)
@@ -25,7 +23,7 @@ rename <- dplyr::rename
 source("../scripts/functions/themes_palettes.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
 ```
 
 # Figure 1
@@ -607,7 +605,6 @@ ggsave("../plots/png/compilation/Figure_1B_1C_1D_together.png",
        p_combined, width = 28, height = 7)
 ```
 
-
 ## Supplementary Figure 1
 
 ```{r}
@@ -623,7 +620,6 @@ ggsave("../plots/png/boxplot/CD4_boxplots_with_lines_by_Subgroup.png", plot = p_
 ggsave("../plots/pdf/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.pdf", plot = p_ratio, width = 12, height = 4)
 ggsave("../plots/png/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.png", plot = p_ratio, width = 12, height = 4)
 ```
-
 
 # Save Tables
 
