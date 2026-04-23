@@ -15,6 +15,7 @@ library(forcats)
 library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
+library(ggridges)
 
 # Specify function
 select <- dplyr::select
@@ -30,6 +31,7 @@ ggplot2::update_geom_defaults(
 
 # Source scripts
 source("../scripts/functions/themes_palettes.R")
+source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
 metadata <- read_csv("../data/metadata/metadata.csv")
@@ -37,63 +39,1001 @@ data_long <- read_csv("../data/data_long.csv")
 data_wide <- read_csv("../data/data_wide.csv")
 ```
 
-# Figure 3
+# Figure 4
 
-## Figure 3A
+## Figure 4A
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Subgroup %in% c("Primary HIV infection", "More preserved immunity", "Severely imparired immunity", "Healthy")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Disease", 
+                          case = "HIV", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "PLWH (at follow-up) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+de_res_hiv_fu_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_hiv_fu_healthy <- p
 ```
 
-## Figure 3B
+## Figure 4B
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Class %in% c("Cardiovascular", "Healthy")) |> 
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
+input_data <- data_wide |>
+  bind_rows(hdba_data) |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Class", 
+                          case = "Cardiovascular", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Cardiovascular diseases vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+cvd_healthy_res <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p_volcano_cvd_healthy <- p
+
+p_volcano_cvd_healthy
 ```
 
-## Figure 3C
+## Figure 4C
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Class %in% c("Metabolic", "Healthy")) |> 
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
+input_data <- data_wide |>
+  bind_rows(hdba_data) |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Class", 
+                          case = "Metabolic", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Metabolic diseases vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+met_healthy_res <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p_volcano_met_healthy <- p
+
+p_volcano_met_healthy
 ```
 
-## Figure 3D
+## Figure 4D
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Abacavir" & Timepoint == "Follow-up" | Disease == "Healthy") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "PLWH on INSTI + Abacavir (at follow-up) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+res_instiaa_fu_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_healthy <- p
 ```
 
-## Figure 3E
+## Figure 4E
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Tenofovir" & Timepoint == "Follow-up" | Disease == "Healthy") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex","BMI")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "PLWH on INSTI + Tenofovir (at follow-up) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+res_instite_fu_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instite_fu_healthy <- p
 ```
 
-## Figure 3F
+## Figure 4F
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "NNRTI + Tenofovir" & Timepoint == "Follow-up" | Disease == "Healthy") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Healthy", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "PLWH on NNRTI + Tenofovir (at follow-up) vs. Healthy",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+res_nnrtite_fu_healthy <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_nnrtite_fu_healthy <- p
 ```
 
-## Figure 3G
+## Figure 4G
+
+```{r}
+res_instiaa_fu_healthy
+res_instite_fu_healthy
+res_nnrtite_fu_healthy
+
+cvd_healthy_res
+met_healthy_res
+
+# Identify CVD set of significant proteins
+cvd_sig_proteins <- cvd_healthy_res |>
+  filter(adj.P.Val < 0.05 & abs(logFC) > 0.5) |>
+  pull(Feature)
+
+# Identify Met set of significant proteins
+met_sig_proteins <- met_healthy_res |>
+  filter(adj.P.Val < 0.05 & abs(logFC) > 0.5) |>
+  pull(Feature)
+
+# Identify CVD & Met overlapping significant proteins
+overlap_sig_proteins <- intersect(cvd_sig_proteins, met_sig_proteins)
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+cvd_sig_proteins <- cvd_healthy_res |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature)
+
+met_sig_proteins <- met_healthy_res |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature)
+
+overlap_sig_proteins <- intersect(cvd_sig_proteins, met_sig_proteins)
+
+cvd_only_proteins <- setdiff(cvd_sig_proteins, met_sig_proteins)
+met_only_proteins <- setdiff(met_sig_proteins, cvd_sig_proteins)
+
+extract_logfc <- function(res_df, comparison_name) {
+  res_df |>
+    select(Feature, logFC, adj.P.Val) |>
+    mutate(
+      Comparison = comparison_name,
+      Significant = adj.P.Val < fdr_cutoff & abs(logFC) > logfc_cutoff
+    )
+}
+
+logfc_long <- bind_rows(
+  extract_logfc(cvd_healthy_res,        "CVD vs Healthy"),
+  extract_logfc(met_healthy_res,        "MET vs Healthy"),
+  extract_logfc(res_instiaa_fu_healthy, "INSTI + Abacavir"),
+  extract_logfc(res_instite_fu_healthy, "INSTI + Tenofovir"),
+  extract_logfc(res_nnrtite_fu_healthy, "NNRTI + Tenofovir")
+)
+
+heatmap_df <- logfc_long |>
+  filter(
+    Feature %in% c(
+      overlap_sig_proteins,
+      met_only_proteins,
+      cvd_only_proteins
+    )
+  ) |>
+  mutate(
+    Block = case_when(
+      Feature %in% overlap_sig_proteins ~ "CVD & MET",
+      Feature %in% met_only_proteins     ~ "MET only",
+      Feature %in% cvd_only_proteins     ~ "CVD only"
+    ),
+    Block = factor(
+      Block,
+      levels = c("CVD & MET", "MET only", "CVD only")
+    )
+  )
+
+protein_order <- heatmap_df |>
+  group_by(Feature, Block) |>
+  summarise(mean_abs_logFC = mean(abs(logFC), na.rm = TRUE), .groups = "drop") |>
+  arrange(Block, desc(mean_abs_logFC)) |>
+  pull(Feature)
+
+heatmap_df <- heatmap_df |>
+  mutate(
+    Feature = factor(Feature, levels = protein_order),
+    Comparison = factor(
+      Comparison,
+      levels = c(
+        "CVD vs Healthy",
+        "MET vs Healthy",
+        "INSTI + Abacavir",
+        "INSTI + Tenofovir",
+        "NNRTI + Tenofovir"
+      )
+    )
+  )
+
+library(ggplot2)
+
+p_heatmap <- ggplot(
+  heatmap_df,
+  aes(x = Comparison, y = Feature, fill = logFC)
+) +
+  geom_tile(color = "white", linewidth = 0.3) +
+
+  # ⭐ significance overlay
+  geom_text(
+    data = dplyr::filter(heatmap_df, Significant),
+    label = "*",
+    color = "black",
+    size  = 3
+  ) +
+
+  facet_grid(
+    rows = vars(Block),
+    scales = "free_y",
+    space  = "free_y"
+  ) +
+
+  scale_fill_gradient2(
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    name = "logFC"
+  ) +
+
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid = element_blank(),
+    strip.text.y = element_text(angle = 0, face = "bold"),
+    axis.text.y  = element_text(size = 7),
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.title   = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+p_heatmap
+```
+
+## Figure 4H
 
 ```{r}
 
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "FABP1", "IL6", "GCG", "LEP",
+  
+  "IGFBP1", "IGFBP2", "SULT2A1", "HGF",
+  
+  "IRAG2", "AGRP", "S100A12", "CTSH"
+)
+
+# ---------------------------
+# Treatments of interest
+# ---------------------------
+treatment_order <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Colors (cohort-level)
+# ---------------------------
+group_colors <- c(
+  "NNRTI + Tenofovir"  = "#D55E00",
+  "INSTI + Tenofovir"  = "#0072B2",
+  "INSTI + Abacavir"   = "#CC79A7",
+  "Healthy"            = "#BDBDBD",
+  "Cardiovascular"     = "#FC8D62",
+  "Metabolic"          = "#E5C494"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  bind_rows(hdba_data_long) |>
+  select(DAid, Assay, NPX) |>
+  inner_join(
+    metadata |> bind_rows(hdba_metadata),
+    by = "DAid"
+  ) |>
+  filter(
+    Assay %in% highlighted_proteins,
+    Treatment %in% treatment_order |
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic"
+      )
+  ) |>
+  mutate(
+    Assay = factor(Assay, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subgroup == "Healthy"          ~ "Healthy",
+      Subgroup == "Cardiovascular"   ~ "Cardiovascular",
+      Subgroup == "Metabolic"        ~ "Metabolic",
+      TRUE ~ paste(Treatment, Timepoint, sep = " – ")
+    ),
+
+    # For consistent coloring
+    Group_color = case_when(
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite controller"
+      ) ~ Subgroup,
+      TRUE ~ Treatment
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_cvd_met <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Assay, nrow = 3, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Identified cardiometabolic signatures across treatments and health class",
+    x = "Treatment / Reference group",
+    y = "NPX"
+  )
+
+p_cvd_met
 ```
 
 # Save plots
 
-## Figure 3
+## Figure 4
 
 ```{r}
+# Figure 4A
+ggsave(filename = "Figure_4A_volcano_plot.pdf", plot = p_volcano_hiv_fu_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4A_volcano_plot.png", plot = p_volcano_hiv_fu_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
 
+# Figure 4B
+ggsave(filename = "Figure_4B_volcano_plot.pdf", plot = p_volcano_cvd_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4B_volcano_plot.png", plot = p_volcano_cvd_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
+
+# Figure 4C
+ggsave(filename = "Figure_4C_volcano_plot.pdf", plot = p_volcano_met_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4C_volcano_plot.png", plot = p_volcano_met_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
+
+# Figure 4D
+ggsave(filename = "Figure_4D_volcano_plot.pdf", plot = p_volcano_instiaa_fu_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4D_volcano_plot.png", plot = p_volcano_instiaa_fu_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
+
+# Figure 4E
+ggsave(filename = "Figure_4E_volcano_plot.pdf", plot = p_volcano_instite_fu_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4E_volcano_plot.png", plot = p_volcano_instite_fu_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
+
+# Figure 4F
+ggsave(filename = "Figure_4F_volcano_plot.pdf", plot = p_volcano_nnrtite_fu_healthy, path = "../plots/pdf/volcano/", width = 10, height = 7)
+ggsave(filename = "Figure_4F_volcano_plot.png", plot = p_volcano_nnrtite_fu_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
+
+# Figure 4G
+ggsave(filename = "Figure_4G_heatmap.pdf", plot = p_heatmap, path = "../plots/pdf/heatmap/", width = 4, height = 12)
+ggsave(filename = "Figure_4G_heatmap.png", plot = p_heatmap, path = "../plots/png/heatmap/", width = 4, height = 12, dpi = 300)
+
+# Figure 4H
+ggsave(filename = "Figure_4H_boxplots.pdf", plot = p_cvd_met, path = "../plots/pdf/boxplot/", width = 16, height = 13)
+ggsave(filename = "Figure_4H_boxplots.png", plot = p_cvd_met, path = "../plots/png/boxplot/", width = 12, height = 8, dpi = 300)
 ```
 
-## Supplementary Figure 3
+### Combine
 
 ```{r}
+# Figure A-F 3 columns and 2 rows with collected legend at top
+figure_4_volcano <- (p_volcano_hiv_fu_healthy + p_volcano_cvd_healthy + p_volcano_met_healthy) / (p_volcano_instiaa_fu_healthy + p_volcano_instite_fu_healthy + p_volcano_nnrtite_fu_healthy) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
 
+ggsave(filename = "Figure_4_volcano_plots_combined.pdf", plot = figure_4_volcano, path = "../plots/pdf/volcano/", width = 24, height = 14)
 ```
+
+# Supplementary Figure 12
+
+## S12A
+
+```{r}
+# ---------------------------
+# Prepare age data
+# ---------------------------
+age_df <- metadata %>%
+  bind_rows(hdba_metadata) %>%
+  filter(
+    (Disease == "HIV" & Timepoint == "Follow-up" & Subgroup != "Elite controller") |
+      Disease %in% c("Healthy") | Class %in% c("Cardiovascular", "Metabolic")
+  ) %>%
+  mutate(
+    Group = case_when(
+      Disease == "HIV"            ~ "HIV (Follow-up)",
+      Disease == "Healthy"        ~ "Healthy",
+      Class == "Cardiovascular" ~ "Cardiovascular",
+      Class == "Metabolic"      ~ "Metabolic"
+    ),
+    Age_use = case_when(
+      Disease == "HIV"            ~ `Age (follow-up)`,
+      Disease != "HIV"            ~ Age,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  filter(!is.na(Age_use), !is.na(Group)) %>%
+  mutate(
+    Group = fct_reorder(Group, Age_use, .fun = median, na.rm = TRUE)
+  )
+
+# ---------------------------
+# Plot
+# ---------------------------
+density_age <- ggplot(
+  age_df,
+  aes(x = Age_use, y = Group, fill = Group)
+) +
+  geom_density_ridges(
+    alpha = 0.6,
+    scale = 1.2,
+    rel_min_height = 0.01,
+    color = "grey20",
+    size = 0.3,
+    quantile_lines = TRUE,
+    quantiles = 0.5,
+    vline_linetype = "solid",
+    vline_color = "black",
+    vline_size = 0.4
+  ) +
+  labs(
+    x = "Age (years)",
+    y = NULL,
+    title = "Age distribution across cohorts",
+    subtitle = "HIV follow-up compared with Healthy, Cardiovascular, and Metabolic cohorts"
+  ) +
+  scale_fill_manual(values = c(
+    "HIV (Follow-up)" = "#0072B2",
+    "Healthy"        = "#71BF6E",
+    "Cardiovascular" = "#FC8D62",
+    "Metabolic"      = "#E5C494"
+  )) +
+  theme_hiv()
+
+density_age
+```
+
+## S12B
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+# ---------------------------
+# Prepare sex summary data (FIXED)
+# ---------------------------
+sex_df <- metadata |>
+  filter(
+    (Disease == "HIV" & Timepoint == "Follow-up" & Subgroup != "Elite controller") |
+      Disease == "Healthy" |
+      Class %in% c("Cardiovascular", "Metabolic")
+  ) %>%
+  
+  # 🔑 Define groups first
+  mutate(
+    Group = case_when(
+      Disease == "HIV"          ~ "HIV (Follow-up)",
+      Disease == "Healthy"      ~ "Healthy",
+      Class == "Cardiovascular" ~ "Cardiovascular",
+      Class == "Metabolic"      ~ "Metabolic"
+    ),
+    
+    # 🔑 Clean sex BEFORE counting
+    Sex = case_when(
+      Sex == "M" ~ "Male",
+      Sex == "F" ~ "Female",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  
+  filter(!is.na(Sex), !is.na(Group)) %>%
+  
+  count(Group, Sex) %>%
+  
+  # 🔑 Set order ONCE (no reorder conflict)
+  mutate(
+    Group = factor(
+      Group,
+      levels = c(
+        "HIV (Follow-up)",
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic"
+      )
+    )
+  )
+
+# ---------------------------
+# Plot
+# ---------------------------
+bar_sex <- ggplot(
+  sex_df,
+  aes(x = Group, y = n, fill = Sex)
+) +
+  geom_col(color = "white", width = 0.7) +
+  
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 6
+  ) +
+  
+  coord_flip() +
+  
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  
+  labs(
+    title = "Sex distribution across cohorts",
+    subtitle = "HIV follow-up compared with Healthy, Cardiovascular, and Metabolic cohorts",
+    x = NULL,
+    fill = "Sex"
+  ) +
+  
+  theme_hiv()
+
+bar_sex
+```
+
+## S12C
+
+```{r}
+input_metadata <- metadata |>
+  filter(
+    (Disease == "HIV" & Timepoint == "Follow-up" & Subgroup != "Elite controller") |
+      Disease == "Healthy" |
+      Class %in% c("Cardiovascular", "Metabolic")
+  ) |>
+  filter(!Treatment %in% c("Other", "PI") | is.na(Treatment)) |>
+  mutate(
+  Treatment = case_when(
+    Class == "Cardiovascular" ~ "Cardiovascular",
+    Class == "Metabolic" ~ "Metabolic",
+    Disease == "Healthy" ~ "Healthy",   # 🔑 FIX HERE
+    TRUE ~ Treatment
+  )
+)
+
+input_df <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+umap_df <- hd_umap(
+  dat = input_df,
+  by_sample = TRUE,
+  impute = TRUE,
+  components = 2,
+  seed = 123
+)
+```
+
+```{r}
+group_colors <- c(
+  "NNRTI + Tenofovir"  = "#D55E00",
+  "INSTI + Tenofovir"  = "#0072B2",
+  "INSTI + Abacavir"   = "#CC79A7",
+  "Healthy"            = "#BDBDBD",
+  "Cardiovascular"     = "#FC8D62",
+  "Metabolic"          = "#E5C494"
+)
+
+p_umap <- umap_df$umap_res |>
+  inner_join(input_metadata, by = "DAid") |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = Treatment)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    title = "UMAP of treated PLWH and reference cohorts",
+    x = "UMAP1",
+    y = "UMAP2"
+  ) +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_hiv()
+
+p_umap
+```
+
+## S12D
+
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
+
+
+```{r}
+p_pca_cardiometabolic <- pca_df$pca_res |>
+  inner_join(input_metadata, by = "DAid") |>
+  ggplot(aes(x = PC1, y = PC2, color = Treatment)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 0.8) +
+  labs(
+    title = "PCA of treated PLWH and reference cohorts",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)")
+  ) +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_hiv()
+
+p_pca_cardiometabolic
+```
+
+# Save plots
+
+## Supplementary Figure 12
+
+```{r}
+# S12A
+ggsave(filename = "Supp_Figure_12A_age_density.pdf", plot = density_age, path = "../plots/pdf/density/", width = 10, height = 7)
+ggsave(filename = "Supp_Figure_12A_age_density.png", plot = density_age, path = "../plots/png/density/", width = 10, height = 7, dpi = 300)
+
+# S12B
+ggsave(filename = "Supp_Figure_12B_sex_bar.pdf", plot = bar_sex, path = "../plots/pdf/bar/", width = 10, height = 7)
+
+# S12C
+ggsave(filename = "Supp_Figure_12C_umap.pdf", plot = p_umap, path = "../plots/pdf/umap/", width = 10, height = 7)
+ggsave(filename = "Supp_Figure_12C_umap.png", plot = p_umap, path = "../plots/png/umap/", width = 10, height = 7, dpi = 300)
+
+# S12D
+ggsave(filename = "Supp_Figure_12D_pca.pdf", plot = p_pca_cardiometabolic, path = "../plots/pdf/pca/", width = 10, height = 7)
+ggsave(filename = "Supp_Figure_12D_pca.png", plot = p_pca_cardiometabolic, path = "../plots/png/pca/", width = 10, height = 7, dpi = 300)
+```
+
 
 # Save Tables
 

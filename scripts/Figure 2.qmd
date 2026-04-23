@@ -15,6 +15,7 @@ library(forcats)
 library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
+library(ggbeeswarm)
 
 # Specify function
 select <- dplyr::select
@@ -33,9 +34,11 @@ source("../scripts/functions/themes_palettes.R")
 source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
 
 # Figure 2
@@ -113,7 +116,7 @@ p_cd4cd8_baseline
 ## Figure 2B
 
 ```{r}
-input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid)
+input_df <- data_wide_ml |> filter(DAid %in% (metadata |> filter(Timepoint == "Baseline") |> filter(Disease == "HIV"))$DAid)
 
 pca_df <- hd_pca(
   dat = input_df,
@@ -154,6 +157,17 @@ p_pca_baseline_subgroup <- pca_df$pca_res |>
   coord_equal()
 
 p_pca_baseline_subgroup
+```
+
+```{r}
+# Save PCA variance and loadings for Figure 2B
+fig2b_pca <- pca_df$pca_variance |> mutate(Figure = "Figure 1B") |> mutate(Comparison = "HIV (baseline)")
+fig2b_pca |> write_xlsx("../tables/PCA/fig2b_pca_variance.xlsx")
+
+fig2b_pca_contribution <- pca_df$pca_loadings |> mutate(Figure = "Figure 1B") |> mutate(Comparison = "HIV (baseline)") |>
+  # select the top 15 terms from PC1 and PC2
+  group_by(component) |> slice_max(order_by = abs(value), n = 15) |> ungroup() |> filter(component %in% c("PC1", "PC2"))
+fig2b_pca_contribution |> write_xlsx("../tables/PCA/fig2b_pca_loadings.xlsx")
 ```
 
 ## Figure 2C
@@ -217,6 +231,9 @@ p_hiv_baseline_healthy$layers[[1]]$aes_params$alpha  <- 0.7
 p_hiv_baseline_healthy$layers[[1]]$aes_params$stroke <- 0
 
 p_hiv_baseline_healthy
+
+de_res_hiv_baseline_healthy |> filter(adj.P.Val < 0.05, logFC > 0.5) |> nrow()
+de_res_hiv_baseline_healthy |> filter(adj.P.Val < 0.05, logFC < -0.5) |> nrow()
 ```
 
 ## Figure 2D
@@ -243,17 +260,17 @@ desired_order <- c(
 )
 
 p_plwh_baseline_boxplot <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
+  dplyr::select(DAid, Feature, NPX) %>%
   right_join(
     metadata %>% filter(Timepoint != "Follow-up"),
     by = "DAid"
   ) %>%
   dplyr::filter(
-    Assay %in% highlighted_proteins,
+    Feature %in% highlighted_proteins,
     Subgroup %in% desired_order
   ) %>%
   mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
+    Feature       = factor(Feature, levels = highlighted_proteins),
     Subgroup = factor(Subgroup, levels = desired_order)
   ) %>%
   ggplot(aes(
@@ -272,7 +289,7 @@ p_plwh_baseline_boxplot <- data_long %>%
       outlier.shape = NA,
       alpha = 0.6
     ) +
-    facet_wrap(~ Assay, ncol = 5, scales = "free_y") +
+    facet_wrap(~ Feature, ncol = 5, scales = "free_y") +
         scale_color_manual(values = Subgroup_colors,
                        name = "HIV-1 subgroup / Cohort") +
     scale_fill_manual(values = Subgroup_colors,
@@ -292,6 +309,8 @@ p_plwh_baseline_boxplot
 ```
 
 ## Figure 2E
+
+Run Supplementary first!
 
 ```{r}
 # --------------------------------------------------
@@ -760,7 +779,7 @@ de_results <- hd_de_limma(hd_obj,
 
 head(de_results$de_res)
 
-res_ec_healthy_baseline <- de_results$de_res
+res_ec_healthy <- de_results$de_res
 
 p <- de_results$volcano_plot +
   theme_hiv() +
@@ -1188,7 +1207,7 @@ input_metadata <- metadata |>
   filter(Timepoint == "Baseline") |> 
   filter(Disease %in% c("HIV")) 
 
-input_data <- data_wide |>
+input_data <- data_wide_ml |>
   filter(DAid %in% input_metadata$DAid)
 
 hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
@@ -1221,7 +1240,7 @@ model_output_lasso_only_proteins_baseline <- hd_model_rreg(
   seed = 123
 )
 
-model_output_lasso_only_proteins_baseline
+model_output_lasso_only_proteins_baseline$metrics$auc
 ```
 
 ```{r}
@@ -1240,7 +1259,7 @@ input_metadata <- metadata |>
     Subgroup = factor(Subgroup)
   )
 
-input_data <- data_wide |>
+input_data <- data_wide_ml |>
   filter(DAid %in% input_metadata$DAid)
 
 hd_obj <- HDAnalyzeR::hd_initialize(
@@ -1459,6 +1478,8 @@ ggsave(
   width    = 16,
   height   = 10
 )
+
+multivariate_lasso_baseline <- plot_df
 ```
 
 ## Figure S5B
@@ -1632,6 +1653,271 @@ ggsave(
 )
 ```
 
+### Alternative
+
+```{r}
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+
+# --------------------------------------------------
+# 1. Extract ROC curves
+# --------------------------------------------------
+
+roc_all <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+    model$roc_curve$data |>
+      mutate(Split = split_name)
+  }
+)
+
+# --------------------------------------------------
+# 2. Clean ROC curves
+# --------------------------------------------------
+
+roc_clean <- roc_all |>
+  select(.level, Split, specificity, sensitivity) |>
+  filter(!is.na(specificity), !is.na(sensitivity)) |>
+  group_by(.level, Split, specificity) |>
+  summarise(
+    sensitivity = mean(sensitivity),
+    .groups = "drop"
+  ) |>
+  arrange(.level, Split, specificity)
+
+# --------------------------------------------------
+# 3. Interpolate ROC curves (smooth lines)
+# --------------------------------------------------
+
+spec_grid <- seq(0, 1, length.out = 200)
+
+roc_interp <- roc_clean |>
+  group_by(.level, Split) |>
+  group_modify(~{
+    
+    df <- arrange(.x, specificity)
+    
+    approx_res <- approx(
+      x = df$specificity,
+      y = df$sensitivity,
+      xout = spec_grid,
+      rule = 2
+    )
+    
+    tibble(
+      specificity = approx_res$x,
+      sensitivity = approx_res$y
+    )
+    
+  }) |>
+  ungroup()
+
+# --------------------------------------------------
+# 4. Extract AUC (REMOVE macro/micro)
+# --------------------------------------------------
+
+auc_df <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+    
+    model$metrics$auc |>
+      rename(.level = Subgroup, auc = AUC) |>
+      filter(!.level %in% c("macro", "micro")) |>   # 🔑 FIX
+      mutate(Split = split_name)
+    
+  }
+)
+
+# --------------------------------------------------
+# 5. Median AUC + IQR
+# --------------------------------------------------
+
+auc_summary <- auc_df |>
+  group_by(.level) |>
+  summarise(
+    median_auc = median(auc),
+    q1_auc     = quantile(auc, 0.25),
+    q3_auc     = quantile(auc, 0.75),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 6. Select median split per subgroup
+# --------------------------------------------------
+
+median_split <- auc_df |>
+  left_join(auc_summary, by = ".level") |>
+  mutate(diff = abs(auc - median_auc)) |>
+  group_by(.level) |>
+  slice_min(diff, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  select(.level, Split)
+
+# --------------------------------------------------
+# 7. Get ROC curves for median splits ONLY
+# --------------------------------------------------
+
+roc_median <- roc_interp |>
+  inner_join(median_split, by = c(".level", "Split"))
+
+# --------------------------------------------------
+# 8. Plot
+# --------------------------------------------------
+
+p_roc_median <- ggplot(
+  roc_median,
+  aes(
+    x = 1 - specificity,
+    y = sensitivity,
+    colour = .level
+  )
+) +
+
+  # 🔘 All splits (background)
+  geom_line(
+    data = roc_interp,
+    aes(
+      x = 1 - specificity,
+      y = sensitivity,
+      group = interaction(Split, .level)
+    ),
+    color = "grey80",
+    linewidth = 0.2,
+    inherit.aes = FALSE
+  ) +
+
+  # 🔵 Median ROC (foreground)
+  geom_line(linewidth = 1.3) +
+
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+
+  facet_wrap(~.level) +
+
+  geom_text(
+    data = auc_summary,
+    aes(
+      x = 0.6,
+      y = 0.1,
+      label = paste0(
+        "AUC = ",
+        round(median_auc, 2),
+        " (",
+        round(q1_auc, 2),
+        "–",
+        round(q3_auc, 2),
+        ")"
+      )
+    ),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+
+  scale_color_manual(values = Subgroup_colors) +
+  theme_hiv() +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity",
+    colour = "HIV subgroup",
+    title = "Median ROC curves per HIV subgroup",
+    subtitle = "Grey = all splits, Color = median split, numbers = median (IQR)"
+  )
+
+p_roc_median
+
+# --------------------------------------------------
+# 9. Save
+# --------------------------------------------------
+
+ggsave(
+  "../plots/pdf/model/Median_ROC_per_HIV_subgroup.pdf",
+  p_roc_median,
+  width = 14,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/model/Median_ROC_per_HIV_subgroup.png",
+  p_roc_median,
+  width = 14,
+  height = 7
+)
+```
+
+```{r}
+library(dplyr)
+library(purrr)
+
+# --------------------------------------------------
+# Extract metrics per split
+# --------------------------------------------------
+
+metrics_df <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+
+    # ---------------------------
+    # AUC (per subgroup)
+    # ---------------------------
+    auc_df <- model$metrics$auc |>
+      rename(Subgroup = Subgroup, AUC = AUC)
+
+    # ---------------------------
+    # Other metrics (single values)
+    # ---------------------------
+    accuracy    <- model$metrics$accuracy
+    sensitivity <- model$metrics$sensitivity
+    specificity <- model$metrics$specificity
+
+    # ---------------------------
+    # Combine
+    # ---------------------------
+    auc_df |>
+      mutate(
+        Split       = split_name,
+        Accuracy    = accuracy,
+        Sensitivity = sensitivity,
+        Specificity = specificity
+      )
+
+  }
+)
+
+# --------------------------------------------------
+# Optional: remove macro/micro
+# --------------------------------------------------
+
+metrics_df_clean <- metrics_df |>
+  filter(!Subgroup %in% c("macro", "micro"))
+
+metrics_df_clean
+metrics_df_clean |> write_xlsx("../tables/Multivariate_LASSO/Supplementary Table 11.xlsx")
+
+summary_df <- metrics_df_clean |>
+  group_by(Subgroup) |>
+  summarise(
+    median_auc = median(AUC),
+    q1_auc     = quantile(AUC, 0.25),
+    q3_auc     = quantile(AUC, 0.75),
+    .groups = "drop"
+  )
+
+summary_df
+summary_df |> write_xlsx("../tables/Multivariate_LASSO/Supplementary Table 12.xlsx")
+
+ggplot(metrics_df_clean, aes(x = Subgroup, y = AUC, fill = Subgroup)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5) +
+  scale_fill_manual(values = Subgroup_colors) +
+  theme_hiv()
+```
+
 ## Figure S5C
 
 ```{r}
@@ -1646,17 +1932,17 @@ desired_order <- c(
 )
 
 p_plwh_baseline_boxplot_ml <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
+  dplyr::select(DAid, Feature, NPX) %>%
   right_join(
     metadata %>% filter(Timepoint != "Follow-up"),
     by = "DAid"
   ) %>%
   dplyr::filter(
-    Assay %in% highlighted_proteins,
+    Feature %in% highlighted_proteins,
     Subgroup %in% desired_order
   ) %>%
   mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
+    Feature       = factor(Feature, levels = highlighted_proteins),
     Subgroup = factor(Subgroup, levels = desired_order)
   ) %>%
   ggplot(aes(
@@ -1675,7 +1961,7 @@ p_plwh_baseline_boxplot_ml <- data_long %>%
       outlier.shape = NA,
       alpha = 0.6
     ) +
-    facet_wrap(~ Assay, ncol = 1, scales = "free_y") +
+    facet_wrap(~ Feature, ncol = 1, scales = "free_y") +
         scale_color_manual(values = Subgroup_colors,
                        name = "HIV-1 subgroup / Cohort") +
     scale_fill_manual(values = Subgroup_colors,
@@ -1689,14 +1975,18 @@ p_plwh_baseline_boxplot_ml <- data_long %>%
   # remove x-axis text
   theme(
     axis.text.x = element_blank()
+  ) +
+  # Remove legend
+  theme(
+    legend.position = "none"
   )
 
 p_plwh_baseline_boxplot_ml
 
 ggsave(
-  "../plots/pdf/model/Boxplot_top_ML_proteins.pdf",
+  "../plots/pdf/boxplot/Boxplot_top_ML_proteins.pdf",
   p_plwh_baseline_boxplot_ml,
-  width = 10,
+  width = 6,
   height = 28
 )
 ```
