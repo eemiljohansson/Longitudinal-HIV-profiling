@@ -778,7 +778,6 @@ p_heatmap
 ggsave(filename = "Figure_4G_heatmap_alternative.pdf", plot = p_heatmap, path = "../plots/pdf/heatmap/", width = 16, height = 4)
 ```
 
-
 ## Figure 4H
 
 ```{r}
