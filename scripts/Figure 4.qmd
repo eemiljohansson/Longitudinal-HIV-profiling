@@ -16,6 +16,7 @@ library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
 library(ggridges)
+library(ggbeeswarm)
 
 # Specify function
 select <- dplyr::select
@@ -34,9 +35,11 @@ source("../scripts/functions/themes_palettes.R")
 source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
 
 # Figure 4
@@ -46,7 +49,7 @@ data_wide <- read_csv("../data/data_wide.csv")
 ```{r}
 input_metadata <- metadata |>
   filter(Timepoint != "Baseline") |> 
-  filter(Subgroup %in% c("Primary HIV infection", "More preserved immunity", "Severely imparired immunity", "Healthy")) |>
+  filter(Subgroup %in% c("Primary HIV infection", "More preserved immunity", "Severely impaired immunity", "Healthy")) |>
   mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
   mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
@@ -105,6 +108,12 @@ p
 p_volcano_hiv_fu_healthy <- p
 ```
 
+```{r}
+input_metadata |>
+  group_by(Disease, Subgroup) |>
+  summarise(n = n())
+```
+
 ## Figure 4B
 
 ```{r}
@@ -114,7 +123,6 @@ input_metadata <- metadata |>
   mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
 input_data <- data_wide |>
-  bind_rows(hdba_data) |>
   filter(DAid %in% input_metadata$DAid)
 
 hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
@@ -169,6 +177,14 @@ p_volcano_cvd_healthy <- p
 p_volcano_cvd_healthy
 ```
 
+```{r}
+input_metadata |>
+  filter(!is.na(Sex)) |>
+  filter(!is.na(Age)) |>
+  group_by(Class) |>
+  summarise(n = n())
+```
+
 ## Figure 4C
 
 ```{r}
@@ -178,7 +194,6 @@ input_metadata <- metadata |>
   mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
 
 input_data <- data_wide |>
-  bind_rows(hdba_data) |>
   filter(DAid %in% input_metadata$DAid)
 
 hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
@@ -231,6 +246,14 @@ p$layers[[1]]$aes_params$stroke <- 0
 p_volcano_met_healthy <- p
 
 p_volcano_met_healthy
+```
+
+```{r}
+input_metadata |>
+  filter(!is.na(Sex)) |>
+  filter(!is.na(Age)) |>
+  group_by(Class) |>
+  summarise(n = n())
 ```
 
 ## Figure 4D
@@ -300,6 +323,14 @@ p
 p_volcano_instiaa_fu_healthy <- p
 ```
 
+```{r}
+input_metadata |>
+  filter(!is.na(Sex)) |>
+  filter(!is.na(Age)) |>
+  group_by(Treatment) |>
+  summarise(n = n())
+```
+
 ## Figure 4E
 
 ```{r}
@@ -365,6 +396,14 @@ p$layers[[1]]$aes_params$stroke <- 0
 p
 
 p_volcano_instite_fu_healthy <- p
+```
+
+```{r}
+input_metadata |>
+  filter(!is.na(Sex)) |>
+  filter(!is.na(Age)) |>
+  group_by(Treatment) |>
+  summarise(n = n())
 ```
 
 ## Figure 4F
@@ -434,6 +473,14 @@ p
 p_volcano_nnrtite_fu_healthy <- p
 ```
 
+```{r}
+input_metadata |>
+  filter(!is.na(Sex)) |>
+  filter(!is.na(Age)) |>
+  group_by(Treatment) |>
+  summarise(n = n())
+```
+
 ## Figure 4G
 
 ```{r}
@@ -483,6 +530,7 @@ extract_logfc <- function(res_df, comparison_name) {
 }
 
 logfc_long <- bind_rows(
+  extract_logfc(de_res_hiv_fu_healthy, "HIV (FU) vs Healthy"),
   extract_logfc(cvd_healthy_res,        "CVD vs Healthy"),
   extract_logfc(met_healthy_res,        "MET vs Healthy"),
   extract_logfc(res_instiaa_fu_healthy, "INSTI + Abacavir"),
@@ -524,6 +572,7 @@ heatmap_df <- heatmap_df |>
       levels = c(
         "CVD vs Healthy",
         "MET vs Healthy",
+        "HIV (FU) vs Healthy",
         "INSTI + Abacavir",
         "INSTI + Tenofovir",
         "NNRTI + Tenofovir"
@@ -579,17 +628,167 @@ p_heatmap <- ggplot(
 p_heatmap
 ```
 
+### Alternative
+
+```{r}
+res_instiaa_fu_healthy
+res_instite_fu_healthy
+res_nnrtite_fu_healthy
+
+cvd_healthy_res
+met_healthy_res
+
+# Identify CVD set of significant proteins
+cvd_sig_proteins <- cvd_healthy_res |>
+  filter(adj.P.Val < 0.05 & abs(logFC) > 0.5) |>
+  pull(Feature)
+
+# Identify Met set of significant proteins
+met_sig_proteins <- met_healthy_res |>
+  filter(adj.P.Val < 0.05 & abs(logFC) > 0.5) |>
+  pull(Feature)
+
+# Identify CVD & Met overlapping significant proteins
+overlap_sig_proteins <- intersect(cvd_sig_proteins, met_sig_proteins)
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+cvd_sig_proteins <- cvd_healthy_res |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature)
+
+met_sig_proteins <- met_healthy_res |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature)
+
+overlap_sig_proteins <- intersect(cvd_sig_proteins, met_sig_proteins)
+
+cvd_only_proteins <- setdiff(cvd_sig_proteins, met_sig_proteins)
+met_only_proteins <- setdiff(met_sig_proteins, cvd_sig_proteins)
+
+extract_logfc <- function(res_df, comparison_name) {
+  res_df |>
+    select(Feature, logFC, adj.P.Val) |>
+    mutate(
+      Comparison = comparison_name,
+      Significant = adj.P.Val < fdr_cutoff & abs(logFC) > logfc_cutoff
+    )
+}
+
+logfc_long <- bind_rows(
+  extract_logfc(de_res_hiv_fu_healthy, "HIV (FU) vs Healthy"),
+  extract_logfc(cvd_healthy_res,        "CVD vs Healthy"),
+  extract_logfc(met_healthy_res,        "MET vs Healthy"),
+  extract_logfc(res_instiaa_fu_healthy, "INSTI + Abacavir"),
+  extract_logfc(res_instite_fu_healthy, "INSTI + Tenofovir"),
+  extract_logfc(res_nnrtite_fu_healthy, "NNRTI + Tenofovir")
+)
+
+heatmap_df <- logfc_long |>
+  filter(
+    Feature %in% c(
+      overlap_sig_proteins,
+      met_only_proteins,
+      cvd_only_proteins
+    )
+  ) |>
+  mutate(
+    Block = case_when(
+      Feature %in% overlap_sig_proteins ~ "CVD & MET",
+      Feature %in% met_only_proteins     ~ "MET only",
+      Feature %in% cvd_only_proteins     ~ "CVD only"
+    ),
+    Block = factor(
+      Block,
+      levels = c("CVD & MET", "MET only", "CVD only")
+    )
+  )
+
+protein_order <- heatmap_df |>
+  group_by(Feature, Block) |>
+  summarise(mean_abs_logFC = mean(abs(logFC), na.rm = TRUE), .groups = "drop") |>
+  arrange(Block, desc(mean_abs_logFC)) |>
+  pull(Feature)
+
+heatmap_df <- heatmap_df |>
+  mutate(
+    Feature = factor(Feature, levels = protein_order),
+    Comparison = factor(
+      Comparison,
+      levels = c(
+        "CVD vs Healthy",
+        "MET vs Healthy",
+        "HIV (FU) vs Healthy",
+        "INSTI + Abacavir",
+        "INSTI + Tenofovir",
+        "NNRTI + Tenofovir"
+      )
+    )
+  )
+
+library(ggplot2)
+
+p_heatmap <- ggplot(
+  heatmap_df,
+  aes(x = Feature, y = Comparison, fill = logFC)
+) +
+  
+  geom_tile(color = "white", linewidth = 0.3) +
+
+  # ⭐ significance overlay
+  geom_text(
+    data = dplyr::filter(heatmap_df, Significant),
+    label = "*",
+    color = "black",
+    size  = 3
+  ) +
+
+  facet_grid(
+    cols = vars(Block),          # 🔥 facet horizontally now
+    scales = "free_x",
+    space  = "free_x"
+  ) +
+
+  scale_fill_gradient2(
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    name = "logFC"
+  ) +
+
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    strip.text.x = element_text(face = "bold"),
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 7),  # 🔥 rotated proteins
+    axis.text.y  = element_text(size = 10),
+    legend.position = "right",
+    panel.spacing = unit(0.5, "lines")
+  )
+
+p_heatmap
+
+ggsave(filename = "Figure_4G_heatmap_alternative.pdf", plot = p_heatmap, path = "../plots/pdf/heatmap/", width = 16, height = 4)
+```
+
+
 ## Figure 4H
 
 ```{r}
-
 # ---------------------------
 # Proteins of interest
 # ---------------------------
 highlighted_proteins <- c(
-  "FABP1", "IL6", "GCG", "LEP",
+  "FABP1", "FABP2", "IL6", "LEP",
   
-  "IGFBP1", "IGFBP2", "SULT2A1", "HGF",
+  "IGFBP1", "IGFBP2", "SULT2A1", "GDF15",
   
   "IRAG2", "AGRP", "S100A12", "CTSH"
 )
@@ -619,14 +818,13 @@ group_colors <- c(
 # Prepare plotting data
 # ---------------------------
 p_up <- data_long |>
-  bind_rows(hdba_data_long) |>
-  select(DAid, Assay, NPX) |>
+  select(DAid, Feature, NPX) |>
   inner_join(
-    metadata |> bind_rows(hdba_metadata),
+    metadata,
     by = "DAid"
   ) |>
   filter(
-    Assay %in% highlighted_proteins,
+    Feature %in% highlighted_proteins,
     Treatment %in% treatment_order |
       Subgroup %in% c(
         "Healthy",
@@ -635,7 +833,7 @@ p_up <- data_long |>
       )
   ) |>
   mutate(
-    Assay = factor(Assay, levels = highlighted_proteins),
+    Feature = factor(Feature, levels = highlighted_proteins),
 
     # -----------------------
     # X-axis grouping logic
@@ -700,7 +898,7 @@ p_cvd_met <- ggplot(
     outlier.shape = NA,
     alpha = 0.6
   ) +
-  facet_wrap(~ Assay, nrow = 3, scales = "free_y") +
+  facet_wrap(~ Feature, nrow = 3, scales = "free_y") +
   scale_color_manual(values = group_colors) +
   scale_fill_manual(values = group_colors) +
   theme_classic() +
@@ -716,6 +914,257 @@ p_cvd_met <- ggplot(
   )
 
 p_cvd_met
+
+ggsave(filename = "Figure_4H_boxplots_examples.pdf", plot = p_cvd_met, path = "../plots/pdf/boxplot/", width = 16, height = 13)
+```
+
+### Alternative
+
+```{r}
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "FABP1", "FABP2", "LEP",
+  
+  "IGFBP1", "IGFBP2", "SULT2A1", "GDF15",
+  
+  "IRAG2", "AGRP", "S100A12"
+)
+
+# ---------------------------
+# Treatments of interest
+# ---------------------------
+treatment_order <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Colors (cohort-level)
+# ---------------------------
+group_colors <- c(
+  "NNRTI + Tenofovir"  = "#D55E00",
+  "INSTI + Tenofovir"  = "#0072B2",
+  "INSTI + Abacavir"   = "#CC79A7",
+  "Healthy"            = "#BDBDBD",
+  "Cardiovascular"     = "#FC8D62",
+  "Metabolic"          = "#E5C494"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  select(DAid, Feature, NPX) |>
+  inner_join(
+    metadata,
+    by = "DAid"
+  ) |>
+  filter(
+    Feature %in% highlighted_proteins,
+    Treatment %in% treatment_order |
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic"
+      )
+  ) |>
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subgroup == "Healthy"          ~ "Healthy",
+      Subgroup == "Cardiovascular"   ~ "Cardiovascular",
+      Subgroup == "Metabolic"        ~ "Metabolic",
+      TRUE ~ paste(Treatment, Timepoint, sep = " – ")
+    ),
+
+    # For consistent coloring
+    Group_color = case_when(
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite controller"
+      ) ~ Subgroup,
+      TRUE ~ Treatment
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_cvd_met <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Feature, nrow = 2, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Identified cardiometabolic signatures across treatments and health class",
+    x = "Treatment / Reference group",
+    y = "NPX"
+  )
+
+p_cvd_met
+
+ggsave(filename = "Figure_4H_boxplots_examples_alt.pdf", plot = p_cvd_met, path = "../plots/pdf/boxplot/", width = 20, height = 7)
+```
+
+### Alternative 2
+
+```{r}
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  select(DAid, Feature, NPX) |>
+  inner_join(metadata, by = "DAid") |>
+  filter(
+    Feature %in% highlighted_proteins,
+    Treatment %in% treatment_order |
+      Subgroup %in% c("Healthy", "Cardiovascular", "Metabolic")
+  ) |>
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping (with time)
+    # -----------------------
+    Group_time = case_when(
+      Subgroup == "Healthy"        ~ "Healthy",
+      Subgroup == "Cardiovascular" ~ "Cardiovascular",
+      Subgroup == "Metabolic"      ~ "Metabolic",
+      TRUE ~ paste(Treatment, Timepoint, sep = " – ")
+    ),
+
+    # -----------------------
+    # 🔥 COLOR GROUP (NO timepoint split)
+    # -----------------------
+    Group_color = case_when(
+      Subgroup %in% c("Healthy", "Cardiovascular", "Metabolic") ~ Subgroup,
+      TRUE ~ Treatment
+    )
+  )
+
+# ---------------------------
+# Order (IMPORTANT)
+# ---------------------------
+x_order <- c(
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Group_time  <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_cvd_met <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0
+  ) +
+  
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  
+  facet_wrap(~ Feature, nrow = 2, scales = "free_y") +
+  
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x  = element_blank(),   # 🔥 remove clutter
+    axis.ticks.x = element_blank(),
+    legend.position = "right",
+    legend.title = element_blank()
+  ) +
+  
+  labs(
+    title = "Identified cardiometabolic signatures across treatments and health class",
+    x = NULL,
+    y = "NPX"
+  )
+
+p_cvd_met
+
+ggsave(
+  filename = "Figure_4H_boxplots_clean_legend.pdf",
+  plot = p_cvd_met,
+  path = "../plots/pdf/boxplot/",
+  width = 20,
+  height = 7
+)
 ```
 
 # Save plots
@@ -748,8 +1197,8 @@ ggsave(filename = "Figure_4F_volcano_plot.pdf", plot = p_volcano_nnrtite_fu_heal
 ggsave(filename = "Figure_4F_volcano_plot.png", plot = p_volcano_nnrtite_fu_healthy, path = "../plots/png/volcano/", width = 10, height = 7)
 
 # Figure 4G
-ggsave(filename = "Figure_4G_heatmap.pdf", plot = p_heatmap, path = "../plots/pdf/heatmap/", width = 4, height = 12)
-ggsave(filename = "Figure_4G_heatmap.png", plot = p_heatmap, path = "../plots/png/heatmap/", width = 4, height = 12, dpi = 300)
+ggsave(filename = "Figure_4G_heatmap.pdf", plot = p_heatmap, path = "../plots/pdf/heatmap/", width = 5, height = 12)
+ggsave(filename = "Figure_4G_heatmap.png", plot = p_heatmap, path = "../plots/png/heatmap/", width = 5, height = 12, dpi = 300)
 
 # Figure 4H
 ggsave(filename = "Figure_4H_boxplots.pdf", plot = p_cvd_met, path = "../plots/pdf/boxplot/", width = 16, height = 13)
@@ -776,7 +1225,6 @@ ggsave(filename = "Figure_4_volcano_plots_combined.pdf", plot = figure_4_volcano
 # Prepare age data
 # ---------------------------
 age_df <- metadata %>%
-  bind_rows(hdba_metadata) %>%
   filter(
     (Disease == "HIV" & Timepoint == "Follow-up" & Subgroup != "Elite controller") |
       Disease %in% c("Healthy") | Class %in% c("Cardiovascular", "Metabolic")
@@ -940,7 +1388,7 @@ input_metadata <- metadata |>
   )
 )
 
-input_df <- data_wide |>
+input_df <- data_wide_ml |>
   filter(DAid %in% input_metadata$DAid)
 
 umap_df <- hd_umap(
@@ -993,7 +1441,6 @@ pc1 <- pca_df$pca_variance$percent_variance[1]
 pc2 <- pca_df$pca_variance$percent_variance[2]
 ```
 
-
 ```{r}
 p_pca_cardiometabolic <- pca_df$pca_res |>
   inner_join(input_metadata, by = "DAid") |>
@@ -1012,6 +1459,215 @@ p_pca_cardiometabolic <- pca_df$pca_res |>
 
 p_pca_cardiometabolic
 ```
+
+```{r}
+# Save PCA variance and loadings for Supplementary Figure 12D
+figs12d_pca <- pca_df$pca_variance |> mutate(Figure = "Supplementary Figure 12B") |> mutate(Comparison = "HIV treatment groups (follow-up), Healthy, CVD, MET")
+figs12d_pca |> write_xlsx("../tables/PCA/figs12d_pca_variance.xlsx")
+
+figs12d_pca_contribution <- pca_df$pca_loadings |> mutate(Figure = "Supplementary Figure 12B") |> mutate(Comparison = "HIV treatment groups (follow-up), Healthy, CVD, MET") |>
+  # select the top 15 terms from PC1 and PC2
+  group_by(component) |> slice_max(order_by = abs(value), n = 15) |> ungroup() |> filter(component %in% c("PC1", "PC2"))
+figs12d_pca_contribution |> write_xlsx("../tables/PCA/figs12d_pca_loadings.xlsx")
+```
+
+# Supplementary Figure 13
+
+## Overlaps
+
+```{r}
+de_res_hiv_fu_healthy
+cvd_healthy_res
+met_healthy_res
+
+res_instiaa_fu_healthy
+res_instite_fu_healthy
+res_nnrtite_fu_healthy
+```
+
+## GSEA
+
+### GO-BP
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+set.seed(123)
+
+# --------------------------------------------------
+# 1. Define list of comparisons
+# --------------------------------------------------
+
+res_list <- list(
+  "HIV vs Healthy"          = de_res_hiv_fu_healthy,
+  "CVD vs Healthy"          = cvd_healthy_res,
+  "Metabolic vs Healthy"    = met_healthy_res,
+  "INSTI (AA) vs Healthy"   = res_instiaa_fu_healthy,
+  "INSTI (TE) vs Healthy"   = res_instite_fu_healthy,
+  "NNRTI (TE) vs Healthy"   = res_nnrtite_fu_healthy
+)
+
+# --------------------------------------------------
+# 2. Run GSEA (GO BP)
+# --------------------------------------------------
+
+gsea_results_go <- lapply(names(res_list), function(name) {
+  
+  res <- res_list[[name]]
+  
+  gsea <- hd_gsea(
+    res,
+    database   = "GO",
+    ontology   = "BP",
+    ranked_by  = "logFC",
+    pval_lim   = 0.05
+  )
+  
+  gsea$enrichment@result |>
+    mutate(Comparison = name)
+})
+
+gsea_go_all <- bind_rows(gsea_results_go)
+
+# --------------------------------------------------
+# 3. Plot
+# --------------------------------------------------
+
+p_gsea_go <- gsea_go_all %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(
+    x = Comparison,
+    y = reorder(Description, NES),
+    color = NES,
+    size = -log10(p.adjust)
+  )) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(
+    x = "Comparison",
+    y = "GO Biological Process",
+    color = "NES",
+    size = "-log10(adj. p-value)"
+  ) +
+  theme_hiv() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_go
+```
+
+### KEGG
+
+```{r}
+# --------------------------------------------------
+# KEGG
+# --------------------------------------------------
+
+gsea_results_kegg <- lapply(names(res_list), function(name) {
+  
+  res <- res_list[[name]]
+  
+  gsea <- hd_gsea(
+    res,
+    database  = "KEGG",
+    ranked_by = "logFC",
+    pval_lim  = 0.05
+  )
+  
+  gsea$enrichment@result |>
+    mutate(Comparison = name)
+})
+
+gsea_kegg_all <- bind_rows(gsea_results_kegg)
+
+p_gsea_kegg <- gsea_kegg_all %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(
+    x = Comparison,
+    y = reorder(Description, NES),
+    color = NES,
+    size = -log10(p.adjust)
+  )) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(
+    x = "Comparison",
+    y = "KEGG Pathway",
+    color = "NES",
+    size = "-log10(adj. p-value)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_kegg
+```
+
+### Reactome
+
+```{r}
+# --------------------------------------------------
+# Reactome
+# --------------------------------------------------
+
+gsea_results_reactome <- lapply(names(res_list), function(name) {
+  
+  res <- res_list[[name]]
+  
+  gsea <- hd_gsea(
+    res,
+    database  = "Reactome",
+    ranked_by = "logFC",
+    pval_lim  = 0.05
+  )
+  
+  gsea$enrichment@result |>
+    mutate(Comparison = name)
+})
+
+gsea_reactome_all <- bind_rows(gsea_results_reactome)
+
+p_gsea_reactome <- gsea_reactome_all %>%
+  group_by(Comparison) %>%
+  slice_min(order_by = p.adjust, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(
+    x = Comparison,
+    y = reorder(Description, NES),
+    color = NES,
+    size = -log10(p.adjust)
+  )) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(
+    x = "Comparison",
+    y = "Reactome Pathway",
+    color = "NES",
+    size = "-log10(adj. p-value)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_gsea_reactome
+```
+
+```{r}
+# GO
+ggsave("../plots/pdf/gsea/gsea_go_all_figure4.pdf", p_gsea_go, width = 16, height = 10)
+ggsave("../plots/png/gsea/gsea_go_allfigure4.png", p_gsea_go, width = 16, height = 10)
+
+# KEGG
+ggsave("../plots/pdf/gsea/gsea_kegg_allfigure4.pdf", p_gsea_kegg, width = 10, height = 6)
+ggsave("../plots/png/gsea/gsea_kegg_allfigure4.png", p_gsea_kegg, width = 10, height = 6)
+
+# Reactome
+ggsave("../plots/pdf/gsea/gsea_reactome_all.pdf", p_gsea_reactome, width = 10, height = 6)
+ggsave("../plots/png/gsea/gsea_reactome_all.png", p_gsea_reactome, width = 10, height = 6)
+```
+
 
 # Save plots
 
@@ -1032,6 +1688,284 @@ ggsave(filename = "Supp_Figure_12C_umap.png", plot = p_umap, path = "../plots/pn
 # S12D
 ggsave(filename = "Supp_Figure_12D_pca.pdf", plot = p_pca_cardiometabolic, path = "../plots/pdf/pca/", width = 10, height = 7)
 ggsave(filename = "Supp_Figure_12D_pca.png", plot = p_pca_cardiometabolic, path = "../plots/png/pca/", width = 10, height = 7, dpi = 300)
+```
+
+## Supplementary Figure 13
+
+```{r}
+library(dplyr)
+library(ggVennDiagram)
+library(ggplot2)
+
+# --------------------------------------------------
+# 1. Thresholds
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+# --------------------------------------------------
+# 2. Create UP-regulated protein sets
+# --------------------------------------------------
+
+venn_up <- list(
+  "CVD" =
+    cvd_healthy_res |>
+    filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "Metabolic" =
+    met_healthy_res |>
+    filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "INSTI AA" =
+    res_instiaa_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "INSTI TE" =
+    res_instite_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "NNRTI TE" =
+    res_nnrtite_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff) |>
+    pull(Feature) |> unique()
+)
+
+# --------------------------------------------------
+# 3. Plot (UP)
+# --------------------------------------------------
+
+p_up <- ggVennDiagram(
+  venn_up,
+  label_alpha = 0
+) +
+  scale_fill_gradient(low = "#F4F4F4", high = "#C03830") +
+  labs(title = "Overlap of increased proteins") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+
+p_up
+```
+
+```{r}
+# --------------------------------------------------
+# 4. Create DOWN-regulated protein sets
+# --------------------------------------------------
+
+venn_down <- list(
+  "CVD" =
+    cvd_healthy_res |>
+    filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "Metabolic" =
+    met_healthy_res |>
+    filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "INSTI AA" =
+    res_instiaa_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "INSTI TE" =
+    res_instite_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff) |>
+    pull(Feature) |> unique(),
+
+  "NNRTI TE" =
+    res_nnrtite_fu_healthy |>
+    filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff) |>
+    pull(Feature) |> unique()
+)
+
+# --------------------------------------------------
+# 5. Plot (DOWN)
+# --------------------------------------------------
+
+p_down <- ggVennDiagram(
+  venn_down,
+  label_alpha = 0
+) +
+  scale_fill_gradient(low = "#F4F4F4", high = "#317EC2") +
+  labs(title = "Overlap of decreased proteins") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+  )
+
+p_down
+```
+
+```{r}
+# Create directories
+dir.create("../plots/png/overlap", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/pdf/overlap", recursive = TRUE, showWarnings = FALSE)
+
+# UP
+ggsave("../plots/png/overlap/venn_up_proteins.png", p_up, width = 8, height = 8, dpi = 300)
+ggsave("../plots/pdf/overlap/venn_up_proteins.pdf", p_up, width = 8, height = 8)
+
+# DOWN
+ggsave("../plots/png/overlap/venn_down_proteins.png", p_down, width = 8, height = 8, dpi = 300)
+ggsave("../plots/pdf/overlap/venn_down_proteins.pdf", p_down, width = 8, height = 8)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(openxlsx)
+
+# --------------------------------------------------
+# 1. Thresholds
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+# --------------------------------------------------
+# 2. Define comparisons (EXCLUDING HIV)
+# --------------------------------------------------
+
+res_list <- list(
+  "CVD"        = cvd_healthy_res,
+  "Metabolic"  = met_healthy_res,
+  "INSTI_AA"   = res_instiaa_fu_healthy,
+  "INSTI_TE"   = res_instite_fu_healthy,
+  "NNRTI_TE"   = res_nnrtite_fu_healthy
+)
+
+# --------------------------------------------------
+# 3. Extract protein sets
+# --------------------------------------------------
+
+get_sets <- function(direction = c("up", "down")) {
+  
+  direction <- match.arg(direction)
+  
+  lapply(res_list, function(df) {
+    
+    if (direction == "up") {
+      df |> filter(adj.P.Val < fdr_cutoff, logFC > logfc_cutoff)
+    } else {
+      df |> filter(adj.P.Val < fdr_cutoff, logFC < -logfc_cutoff)
+    } |>
+      pull(Feature) |>
+      unique()
+  })
+}
+
+sets_up   <- get_sets("up")
+sets_down <- get_sets("down")
+
+# --------------------------------------------------
+# 4. Create membership matrix
+# --------------------------------------------------
+
+create_membership_df <- function(sets_list) {
+  
+  all_proteins <- unique(unlist(sets_list))
+  
+  df <- expand.grid(
+    Feature = all_proteins,
+    Comparison = names(sets_list),
+    stringsAsFactors = FALSE
+  ) |>
+    rowwise() |>
+    mutate(
+      Present = Feature %in% sets_list[[Comparison]]
+    ) |>
+    ungroup()
+  
+  df |> pivot_wider(names_from = Comparison, values_from = Present)
+}
+
+df_up_wide   <- create_membership_df(sets_up)
+df_down_wide <- create_membership_df(sets_down)
+
+# --------------------------------------------------
+# 5. FIXED overlap labeling (NO rowwise bugs)
+# --------------------------------------------------
+
+add_overlap_label <- function(df) {
+  
+  comparison_cols <- setdiff(colnames(df), "Feature")
+  
+  df$Overlap <- apply(
+    df[, comparison_cols],
+    1,
+    function(x) {
+      present <- comparison_cols[which(x)]
+      if (length(present) == 0) return(NA)
+      paste(present, collapse = "; ")
+    }
+  )
+  
+  df
+}
+
+df_up_wide   <- add_overlap_label(df_up_wide)
+df_down_wide <- add_overlap_label(df_down_wide)
+
+# --------------------------------------------------
+# 6. Split by overlap
+# --------------------------------------------------
+
+split_by_overlap <- function(df) {
+  split(df, df$Overlap)
+}
+
+overlaps_up   <- split_by_overlap(df_up_wide)
+overlaps_down <- split_by_overlap(df_down_wide)
+
+# --------------------------------------------------
+# 7. Write Excel
+# --------------------------------------------------
+
+wb <- createWorkbook()
+
+# ---- UP ----
+addWorksheet(wb, "UP_all")
+writeData(wb, "UP_all", df_up_wide)
+
+for (nm in names(overlaps_up)) {
+  
+  if (is.na(nm)) next
+  
+  sheet_name <- paste0("UP_", substr(nm, 1, 25))
+  addWorksheet(wb, sheet_name)
+  writeData(wb, sheet_name, overlaps_up[[nm]])
+}
+
+# ---- DOWN ----
+addWorksheet(wb, "DOWN_all")
+writeData(wb, "DOWN_all", df_down_wide)
+
+for (nm in names(overlaps_down)) {
+  
+  if (is.na(nm)) next
+  
+  sheet_name <- paste0("DOWN_", substr(nm, 1, 25))
+  addWorksheet(wb, sheet_name)
+  writeData(wb, sheet_name, overlaps_down[[nm]])
+}
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+saveWorkbook(
+  wb,
+  "../tables/overlap/protein_overlaps_CVD_MET.xlsx",
+  overwrite = TRUE
+)
 ```
 
 
