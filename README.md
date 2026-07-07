@@ -1,10 +1,10 @@
 # Longitudinal-HIV-profiling
-This code was written to make the various analyses made in the study “Longitudinal Proteomic Analysis of HIV-1 Progression and Treatment Response”.
+This code was written to make the various analyses made in the study “Longitudinal Plasma Proteomics Reveal Distinct HIV-1 Phenotypes and Immune Recovery Trajectories”.
 
 # The study
 
 Human immunodeficiency virus type 1 (HIV-1) remains a major public health concern worldwide, despite the transformative impact of antiretroviral therapy (ART) on viral suppression and disease management. Knowledge gaps persist regarding the molecular mechanisms that drive HIV-1 progression and shape the host’s response.  
-The results from the study are published in insert journal*: Johansson, E, et al. Longitudinal Proteomic Analysis of HIV-1 Progression and Treatment Response* (2026). insert DOI here*
+The results from the study are published in insert journal*: Johansson, E, et al. Longitudinal Plasma Proteomics Reveal Distinct HIV-1 Phenotypes and Immune Recovery Trajectories* (2026). insert DOI here*
 
 # Content
 
@@ -33,4 +33,4 @@ This repository includes the code to generate the results describe above:
 ```
 # Citation
 
-Johansson, E, et al. Longitudinal Proteomic Analysis of HIV-1 Progression and Treatment Response. Insert journal here* (2026). insert DOI here*
+Johansson, E, et al. Longitudinal Plasma Proteomics Reveal Distinct HIV-1 Phenotypes and Immune Recovery Trajectories* (2026). insert DOI here*
