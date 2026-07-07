@@ -15,7 +15,7 @@ This repository includes the code to generate the results describe above:
 ## Directory structure
 
 ```bash
-📁 AML-profiling/
+📁 Longitudinal-HIV-profiling/
 ├── 📂 scripts/                # Core analysis scripts (Quarto)
 │   ├── Figure 1.qmd                  # Study overview and cohort sumary
 │   ├── Table 1.qmd                   # HIV-1 subgroup characteristics
