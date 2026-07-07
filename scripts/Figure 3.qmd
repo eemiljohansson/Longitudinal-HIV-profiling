@@ -38,9 +38,11 @@ source("../scripts/functions/themes_palettes.R")
 source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
 
 # Figure 3
@@ -59,7 +61,17 @@ subgroup_levels <- c(
   "Primary HIV infection"
 )
 
-cd4cd8_followup <- cd4cd8_followup |>
+cd4cd8_followup <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  filter(!is.na(`CD4/CD8 status (follow-up)`)) %>%
+  mutate(
+    status   = factor(`CD4/CD8 status (follow-up)`, levels = cd4cd8_levels),
+    Subgroup = factor(Subgroup, levels = subgroup_levels)
+  ) %>%
+  count(Subgroup, status)
+
+subgroup_labels_fu <- cd4cd8_followup |>
   mutate(Subgroup = factor(Subgroup, levels = subgroup_levels))
 
 p_cd4cd8_followup <- ggplot(cd4cd8_followup,
@@ -108,7 +120,7 @@ p_cd4cd8_followup
 ## Figure 3B
 
 ```{r}
-input_df <- data_wide |> filter(DAid %in% (metadata |> filter(Disease %in% c("HIV", "Healthy")))$DAid)
+input_df <- data_wide_ml |> filter(DAid %in% (metadata |> filter(Disease %in% c("HIV", "Healthy")))$DAid)
 
 pca_df <- hd_pca(
   dat = input_df,
@@ -220,6 +232,17 @@ p_pca_split_timepoint <- ggplot(
   coord_equal()
 
 p_pca_split_timepoint
+```
+
+```{r}
+# Save PCA variance and loadings for Figure 3B
+fig3b_pca <- pca_df$pca_variance |> mutate(Figure = "Figure 3B") |> mutate(Comparison = "HIV (baseline), HIV (follow-up), Healthy")
+fig3b_pca |> write_xlsx("../tables/PCA/fig3b_pca_variance.xlsx")
+
+fig3b_pca_contribution <- pca_df$pca_loadings |> mutate(Figure = "Figure 3B") |> mutate(Comparison = "HIV (baseline), HIV (follow-up), Healthy") |>
+  # select the top 15 terms from PC1 and PC2
+  group_by(component) |> slice_max(order_by = abs(value), n = 15) |> ungroup() |> filter(component %in% c("PC1", "PC2"))
+fig3b_pca_contribution |> write_xlsx("../tables/PCA/fig3b_pca_loadings.xlsx")
 ```
 
 ## Figure 3C
@@ -346,14 +369,14 @@ legend_labels <- c(
 # --------------------------------------------------
 
 p_up <- data_long %>%
-  select(DAid, Assay, NPX) %>%
+  select(DAid, Feature, NPX) %>%
   right_join(metadata, by = "DAid") %>%
   filter(
-    Assay %in% highlighted_proteins,
+    Feature %in% highlighted_proteins,
     Subgroup %in% desired_order
   ) %>%
   mutate(
-    Assay = factor(Assay, levels = highlighted_proteins),
+    Feature = factor(Feature, levels = highlighted_proteins),
     Subgroup = factor(Subgroup, levels = desired_order),
 
     Subgroup_time = case_when(
@@ -408,7 +431,7 @@ p_boxplot_immune_reconstitution <- ggplot(
     outlier.shape = NA,
     alpha = 0.6
   ) +
-  facet_wrap(~Assay, ncol = 4, scales = "free_y") +
+  facet_wrap(~Feature, ncol = 4, scales = "free_y") +
   scale_color_manual(
     values = Subgroup_colors,
     labels = legend_labels
@@ -435,6 +458,13 @@ p_boxplot_immune_reconstitution
 ```
 
 ## Figure 3E
+
+```{r}
+metadata |>
+  filter(Disease == "HIV") |>
+  group_by(Timepoint, Subgroup) |>
+  summarise(n = n())
+```
 
 ```{r}
 phi_paired <- run_hiv_de_paired(
@@ -807,8 +837,8 @@ ggsave("../plots/pdf/bar/stacked_bar_cd4cd8_followup.pdf", plot = p_cd4cd8_follo
 ggsave("../plots/png/bar/stacked_bar_cd4cd8_followup.png", plot = p_cd4cd8_followup, width  = 16, height = 7)
 
 # Figure 3B
-ggsave("../plots/pdf/scatter/pca_split_timepoint.pdf", plot = p_pca_split_timepoint, width  = 12, height = 10)
-ggsave("../plots/png/scatter/pca_split_timepoint.png", plot = p_pca_split_timepoint, width  = 12, height = 10)
+ggsave("../plots/pdf/pca/pca_split_timepoint.pdf", plot = p_pca_split_timepoint, width  = 12, height = 10)
+ggsave("../plots/png/pca/pca_split_timepoint.png", plot = p_pca_split_timepoint, width  = 12, height = 10)
 
 # Figure 3C
 ggsave("../plots/pdf/volcano/volcano_hiv_fu_baseline.pdf", plot = p_volcano_hiv_fu_baseline, width  = 10, height = 7)
@@ -836,12 +866,6 @@ ggsave("../plots/pdf/venn/venn_fu_baseline.pdf", plot = plot_overlap_fu_baseline
 # Figure 3I
 ggsave("../plots/pdf/bar/bar_subgroup_fu_healthy.pdf", plot = p_bar_subgroup_fu_healthy, width  = 8, height = 7)
 ```
-
-# Supplementary Figure 6
-
-
-
-# Save plots
 
 # Supplementary Figure 6
 
@@ -904,6 +928,20 @@ ec_vs_healthy_fu <- run_hiv_de(
 
 ec_vs_healthy_fu$volcano_plot
 ```
+
+# Save plots
+
+```{r}
+# Figure (S6A + S6B) / (S6C + S6D)
+p_supplementary_6 <- (phi_vs_healthy_fu$volcano_plot + sii_vs_healthy_fu$volcano_plot) /
+  (mpi_vs_healthy_fu$volcano_plot + ec_vs_healthy_fu$volcano_plot) +
+  # collect legends top
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+
+ggsave("../plots/pdf/volcano/volcano_supplementary_6.pdf", plot = p_supplementary_6, width = 16, height = 14)
+```
+
 
 # Supplementary Figure 7
 
@@ -1044,8 +1082,6 @@ p_gsea_reactome_fu
 ```
 
 # Save plots
-
-## Supplementary Figure 7
 
 ```{r}
 # S7A
@@ -1263,9 +1299,49 @@ mpi_vs_ec_fu$volcano_plot
 ## Supplementary Figure 4
 
 ```{r}
+# S8A
+ggsave("../plots/pdf/volcano/volcano_phi_vs_plwh_fu.pdf", plot = phi_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_phi_vs_plwh_fu.png", plot = phi_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+
+# S8B
+ggsave("../plots/pdf/volcano/volcano_phi_vs_mpi_fu.pdf", plot = phi_vs_mpi_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_phi_vs_mpi_fu.png", plot = phi_vs_mpi_fu$volcano_plot, width  = 10, height = 7)
+
+# S8C
+ggsave("../plots/pdf/volcano/volcano_phi_vs_sii_fu.pdf", plot = phi_vs_sii_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_phi_vs_sii_fu.png", plot = phi_vs_sii_fu$volcano_plot, width  = 10, height = 7)
+
 # S8D
 ggsave("../plots/pdf/volcano/volcano_phi_vs_ec_fu.pdf", plot = phi_vs_ec_fu$volcano_plot, width  = 10, height = 7)
 ggsave("../plots/png/volcano/volcano_phi_vs_ec_fu.png", plot = phi_vs_ec_fu$volcano_plot, width  = 10, height = 7)
+
+# S8E
+ggsave("../plots/pdf/volcano/volcano_sii_vs_plwh_fu.pdf", plot = sii_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_sii_vs_plwh_fu.png", plot = sii_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+
+# S8F
+ggsave("../plots/pdf/volcano/volcano_sii_vs_phi_fu.pdf", plot = sii_vs_phi_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_sii_vs_phi_fu.png", plot = sii_vs_phi_fu$volcano_plot, width  = 10, height = 7)
+
+# S8G
+ggsave("../plots/pdf/volcano/volcano_sii_vs_mpi_fu.pdf", plot = sii_vs_mpi_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_sii_vs_mpi_fu.png", plot = sii_vs_mpi_fu$volcano_plot, width  = 10, height = 7)
+
+# S8H
+ggsave("../plots/pdf/volcano/volcano_sii_vs_ec_fu.pdf", plot = sii_vs_ec_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_sii_vs_ec_fu.png", plot = sii_vs_ec_fu$volcano_plot, width  = 10, height = 7)
+
+# S8I
+ggsave("../plots/pdf/volcano/volcano_mpi_vs_plwh_fu.pdf", plot = mpi_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_mpi_vs_plwh_fu.png", plot = mpi_vs_plwh_fu$volcano_plot, width  = 10, height = 7)
+
+# S8J
+ggsave("../plots/pdf/volcano/volcano_mpi_vs_phi_fu.pdf", plot = mpi_vs_phi_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_mpi_vs_phi_fu.png", plot = mpi_vs_phi_fu$volcano_plot, width  = 10, height = 7)
+
+# S8K
+ggsave("../plots/pdf/volcano/volcano_mpi_vs_sii_fu.pdf", plot = mpi_vs_sii_fu$volcano_plot, width  = 10, height = 7)
+ggsave("../plots/png/volcano/volcano_mpi_vs_sii_fu.png", plot = mpi_vs_sii_fu$volcano_plot, width  = 10, height = 7)
 
 # S8L
 ggsave("../plots/pdf/volcano/volcano_mpi_vs_ec_fu.pdf", plot = mpi_vs_ec_fu$volcano_plot, width  = 10, height = 7)
@@ -1301,7 +1377,6 @@ ggsave("../plots/pdf/volcano/volcano_supplementary_8.pdf", plot = p_supplementar
 ggsave("../plots/png/volcano/volcano_supplementary_8.png", plot = p_supplementary_8, width = 30, height = 24, dpi = 300)
 ```
 
-
 # Supplementary Figure 9
 
 ## S9A
@@ -1316,7 +1391,7 @@ input_metadata <- metadata |>
   filter(Disease == "HIV") |>
   mutate(Subgroup = factor(Subgroup))
 
-input_data <- data_wide |>
+input_data <- data_wide_ml |>
   filter(DAid %in% input_metadata$DAid)
 
 hd_obj <- HDAnalyzeR::hd_initialize(
@@ -1495,7 +1570,7 @@ feature_order <- plot_df |>
   arrange(median_importance) |>
   pull(Feature_label)
 
-plot_df <- plot_df |>
+plot_df_ml_fu <- plot_df |>
   mutate(
     Feature_label = factor(Feature_label, levels = feature_order)
   )
@@ -1505,7 +1580,7 @@ plot_df <- plot_df |>
 # --------------------------------------------------
 
 p_feature_stability <- ggplot(
-  plot_df,
+  plot_df_ml_fu,
   aes(
     x = Feature_label,
     y = Scaled_Importance,
@@ -1553,6 +1628,8 @@ ggsave(
   width    = 16,
   height   = 10
 )
+
+multivariate_lasso_fu <- plot_df_ml_fu
 ```
 
 ## S9B
@@ -1720,6 +1797,271 @@ ggsave(
 )
 ```
 
+### Alternative
+
+```{r}
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+
+# --------------------------------------------------
+# 1. Extract ROC curves
+# --------------------------------------------------
+
+roc_all <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+    model$roc_curve$data |>
+      mutate(Split = split_name)
+  }
+)
+
+# --------------------------------------------------
+# 2. Clean ROC curves
+# --------------------------------------------------
+
+roc_clean <- roc_all |>
+  select(.level, Split, specificity, sensitivity) |>
+  filter(!is.na(specificity), !is.na(sensitivity)) |>
+  group_by(.level, Split, specificity) |>
+  summarise(
+    sensitivity = mean(sensitivity),
+    .groups = "drop"
+  ) |>
+  arrange(.level, Split, specificity)
+
+# --------------------------------------------------
+# 3. Interpolate ROC curves (smooth lines)
+# --------------------------------------------------
+
+spec_grid <- seq(0, 1, length.out = 200)
+
+roc_interp <- roc_clean |>
+  group_by(.level, Split) |>
+  group_modify(~{
+    
+    df <- arrange(.x, specificity)
+    
+    approx_res <- approx(
+      x = df$specificity,
+      y = df$sensitivity,
+      xout = spec_grid,
+      rule = 2
+    )
+    
+    tibble(
+      specificity = approx_res$x,
+      sensitivity = approx_res$y
+    )
+    
+  }) |>
+  ungroup()
+
+# --------------------------------------------------
+# 4. Extract AUC (REMOVE macro/micro)
+# --------------------------------------------------
+
+auc_df <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+    
+    model$metrics$auc |>
+      rename(.level = Subgroup, auc = AUC) |>
+      filter(!.level %in% c("macro", "micro")) |>   # 🔑 FIX
+      mutate(Split = split_name)
+    
+  }
+)
+
+# --------------------------------------------------
+# 5. Median AUC + IQR
+# --------------------------------------------------
+
+auc_summary <- auc_df |>
+  group_by(.level) |>
+  summarise(
+    median_auc = median(auc),
+    q1_auc     = quantile(auc, 0.25),
+    q3_auc     = quantile(auc, 0.75),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 6. Select median split per subgroup
+# --------------------------------------------------
+
+median_split <- auc_df |>
+  left_join(auc_summary, by = ".level") |>
+  mutate(diff = abs(auc - median_auc)) |>
+  group_by(.level) |>
+  slice_min(diff, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  select(.level, Split)
+
+# --------------------------------------------------
+# 7. Get ROC curves for median splits ONLY
+# --------------------------------------------------
+
+roc_median <- roc_interp |>
+  inner_join(median_split, by = c(".level", "Split"))
+
+# --------------------------------------------------
+# 8. Plot
+# --------------------------------------------------
+
+p_roc_median <- ggplot(
+  roc_median,
+  aes(
+    x = 1 - specificity,
+    y = sensitivity,
+    colour = .level
+  )
+) +
+
+  # 🔘 All splits (background)
+  geom_line(
+    data = roc_interp,
+    aes(
+      x = 1 - specificity,
+      y = sensitivity,
+      group = interaction(Split, .level)
+    ),
+    color = "grey80",
+    linewidth = 0.2,
+    inherit.aes = FALSE
+  ) +
+
+  # 🔵 Median ROC (foreground)
+  geom_line(linewidth = 1.3) +
+
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey60"
+  ) +
+
+  facet_wrap(~.level) +
+
+  geom_text(
+    data = auc_summary,
+    aes(
+      x = 0.6,
+      y = 0.1,
+      label = paste0(
+        "AUC = ",
+        round(median_auc, 2),
+        " (",
+        round(q1_auc, 2),
+        "–",
+        round(q3_auc, 2),
+        ")"
+      )
+    ),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+
+  scale_color_manual(values = Subgroup_colors) +
+  theme_hiv() +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity",
+    colour = "HIV subgroup",
+    title = "Median ROC curves per HIV subgroup",
+    subtitle = "Grey = all splits, Color = median split, numbers = median (IQR)"
+  )
+
+p_roc_median
+
+# --------------------------------------------------
+# 9. Save
+# --------------------------------------------------
+
+ggsave(
+  "../plots/pdf/model/Median_ROC_per_HIV_subgroup_fu.pdf",
+  p_roc_median,
+  width = 14,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/model/Median_ROC_per_HIV_subgroup_fu.png",
+  p_roc_median,
+  width = 14,
+  height = 7
+)
+```
+
+```{r}
+library(dplyr)
+library(purrr)
+
+# --------------------------------------------------
+# Extract metrics per split
+# --------------------------------------------------
+
+metrics_df <- purrr::imap_dfr(
+  model_results,
+  function(model, split_name) {
+
+    # ---------------------------
+    # AUC (per subgroup)
+    # ---------------------------
+    auc_df <- model$metrics$auc |>
+      rename(Subgroup = Subgroup, AUC = AUC)
+
+    # ---------------------------
+    # Other metrics (single values)
+    # ---------------------------
+    accuracy    <- model$metrics$accuracy
+    sensitivity <- model$metrics$sensitivity
+    specificity <- model$metrics$specificity
+
+    # ---------------------------
+    # Combine
+    # ---------------------------
+    auc_df |>
+      mutate(
+        Split       = split_name,
+        Accuracy    = accuracy,
+        Sensitivity = sensitivity,
+        Specificity = specificity
+      )
+
+  }
+)
+
+# --------------------------------------------------
+# Optional: remove macro/micro
+# --------------------------------------------------
+
+metrics_df_clean <- metrics_df |>
+  filter(!Subgroup %in% c("macro", "micro"))
+
+metrics_df_clean
+metrics_df_clean |> write_xlsx("../tables/Multivariate_LASSO/Supplementary Table 11 fu.xlsx")
+
+summary_df <- metrics_df_clean |>
+  group_by(Subgroup) |>
+  summarise(
+    median_auc = median(AUC),
+    q1_auc     = quantile(AUC, 0.25),
+    q3_auc     = quantile(AUC, 0.75),
+    .groups = "drop"
+  )
+
+summary_df
+summary_df |> write_xlsx("../tables/Multivariate_LASSO/Supplementary Table 12 fu.xlsx")
+
+ggplot(metrics_df_clean, aes(x = Subgroup, y = AUC, fill = Subgroup)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1, alpha = 0.5) +
+  scale_fill_manual(values = Subgroup_colors) +
+  theme_hiv()
+```
+
 ## S9C
 
 ```{r}
@@ -1734,17 +2076,17 @@ desired_order <- c(
 )
 
 p_plwh_baseline_boxplot_ml <- data_long %>%
-  dplyr::select(DAid, Assay, NPX) %>%
+  dplyr::select(DAid, Feature, NPX) %>%
   right_join(
     metadata %>% filter(Timepoint != "Baseline"),
     by = "DAid"
   ) %>%
   dplyr::filter(
-    Assay %in% highlighted_proteins,
+    Feature %in% highlighted_proteins,
     Subgroup %in% desired_order
   ) %>%
   mutate(
-    Assay       = factor(Assay, levels = highlighted_proteins),
+    Feature       = factor(Feature, levels = highlighted_proteins),
     Subgroup = factor(Subgroup, levels = desired_order)
   ) %>%
   ggplot(aes(
@@ -1763,7 +2105,7 @@ p_plwh_baseline_boxplot_ml <- data_long %>%
       outlier.shape = NA,
       alpha = 0.6
     ) +
-    facet_wrap(~ Assay, ncol = 1, scales = "free_y") +
+    facet_wrap(~ Feature, ncol = 1, scales = "free_y") +
         scale_color_manual(values = Subgroup_colors,
                        name = "HIV-1 subgroup / Cohort") +
     scale_fill_manual(values = Subgroup_colors,
@@ -1777,18 +2119,21 @@ p_plwh_baseline_boxplot_ml <- data_long %>%
   # remove x-axis text
   theme(
     axis.text.x = element_blank()
+  ) +
+  # Remove legend
+  theme(
+    legend.position = "none"
   )
 
 p_plwh_baseline_boxplot_ml
 
 ggsave(
-  "../plots/pdf/model/Boxplot_top_ML_proteins_fu.pdf",
+  "../plots/pdf/boxplot/Boxplot_top_ML_proteins_fu.pdf",
   p_plwh_baseline_boxplot_ml,
-  width = 10,
+  width = 6,
   height = 28
 )
 ```
-
 
 # Supplementary Figure 10
 
@@ -2027,6 +2372,12 @@ Subgroup_colors <- c(
 # Proteins
 # ---------------------------
 proteins_of_interest <- c("LAG3", "DDX58", "CXCL10", "CLEC4A", "GZMA", "GZMB")
+hiv_subgroups <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite controller"
+)
 
 # ---------------------------
 # Data
@@ -2034,27 +2385,23 @@ proteins_of_interest <- c("LAG3", "DDX58", "CXCL10", "CLEC4A", "GZMA", "GZMB")
 scatter_data <- metadata |>
   filter(
     Disease == "HIV",
-    Subgroup %in% c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ),
+    Subgroup %in% hiv_subgroups,
     Timepoint == "Baseline"
   ) |>
   mutate(
-    HIVRNA_log10 = log10(`HIV-RNA (baseline)` + 1)
+    HIVRNA_log10 = log10(`HIV-RNA (baseline)` + 1),
+    Subgroup = factor(Subgroup, levels = hiv_subgroups)
   ) |>
   select(DAid, HIVRNA_log10, Subgroup) |>
   filter(!is.na(HIVRNA_log10)) |>
   inner_join(data_wide, by = "DAid") |>
   pivot_longer(
     -c(DAid, HIVRNA_log10, Subgroup),
-    names_to  = "Assay",
+    names_to  = "Feature",
     values_to = "NPX"
   ) |>
   filter(
-    Assay %in% proteins_of_interest,
+    Feature %in% proteins_of_interest,
     !is.na(NPX)
   )
 
@@ -2062,7 +2409,7 @@ scatter_data <- metadata |>
 # Subgroup correlations (with positions)
 # ---------------------------
 subgroup_cor <- scatter_data |>
-  group_by(Assay, Subgroup) |>
+  group_by(Feature, Subgroup) |>
   summarise(
     test = list(cor.test(HIVRNA_log10, NPX,
                          method = "spearman",
@@ -2077,19 +2424,33 @@ subgroup_cor <- scatter_data |>
       ", p = ", signif(pval, 2)
     )
   ) |>
-  mutate(
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ))
+  arrange(Feature, Subgroup) |>
+  ungroup()
+
+# Position labels in each facet's native data coordinates. This avoids
+# overlap when facet panels have different y-axis ranges.
+facet_label_pos <- scatter_data |>
+  group_by(Feature) |>
+  summarise(
+    x_min = min(HIVRNA_log10, na.rm = TRUE),
+    x_max = max(HIVRNA_log10, na.rm = TRUE),
+    y_min = min(NPX, na.rm = TRUE),
+    y_max = max(NPX, na.rm = TRUE),
+    .groups = "drop"
   ) |>
-  arrange(Assay, Subgroup) |>
-  group_by(Assay) |>
   mutate(
-    # 🔑 MUCH more separation (this is the main fix)
-    y_pos = seq(0.98, 0.50, length.out = n())
+    x_range = pmax(x_max - x_min, 1),
+    y_range = pmax(y_max - y_min, 1),
+    x_pos   = x_min + 0.03 * x_range,
+    y_top   = y_max - 0.04 * y_range,
+    y_step  = 0.12 * y_range
+  )
+
+subgroup_cor <- subgroup_cor |>
+  left_join(facet_label_pos, by = "Feature") |>
+  group_by(Feature) |>
+  mutate(
+    y_pos = y_top - (row_number() - 1) * y_step
   ) |>
   ungroup()
 
@@ -2097,7 +2458,7 @@ subgroup_cor <- scatter_data |>
 # Global correlations (facet titles)
 # ---------------------------
 global_cor <- scatter_data |>
-  group_by(Assay) |>
+  group_by(Feature) |>
   summarise(
     test = list(cor.test(HIVRNA_log10, NPX,
                          method = "spearman",
@@ -2108,13 +2469,13 @@ global_cor <- scatter_data |>
     R    = map_dbl(test, ~ .x$estimate),
     pval = map_dbl(test, ~ .x$p.value),
     facet_label = paste0(
-      Assay,
+      Feature,
       "\nR = ", sprintf("%.2f", R),
       ", p-val = ", signif(pval, 2)
     )
   )
 
-facet_labels <- setNames(global_cor$facet_label, global_cor$Assay)
+facet_labels <- setNames(global_cor$facet_label, global_cor$Feature)
 
 # ---------------------------
 # Plot
@@ -2132,30 +2493,32 @@ p_hivrna_corr <- ggplot(
     linewidth = 0.8
   ) +
 
-  # 🔵 Subgroup labels (manual, stable)
+  # Subgroup labels, positioned separately within each facet.
   geom_text(
-  data = subgroup_cor,
-  aes(
-    x = -Inf,
-    y = y_pos,
-    label = label,
-    color = Subgroup
-  ),
-  hjust = 0,
-  vjust = 1,
-  nudge_x = 0.10,     # 🔑 slightly more padding from left
-  size = 3.2,         # 🔑 tiny bump improves readability
-  lineheight = 1.25,  # 🔑 more breathing room BETWEEN lines
-  inherit.aes = FALSE
-) +
+    data = subgroup_cor,
+    aes(
+      x = x_pos,
+      y = y_pos,
+      label = label,
+      color = Subgroup
+    ),
+    hjust = 0,
+    vjust = 1,
+    size = 3.2,
+    lineheight = 1.15,
+    show.legend = FALSE,
+    inherit.aes = FALSE
+  ) +
 
   facet_wrap(
-    ~ Assay,
+    ~ Feature,
     scales = "free_y",
     labeller = as_labeller(facet_labels)
   ) +
 
   scale_color_manual(values = Subgroup_colors) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.20))) +
   theme_hiv() +
   labs(
     x = expression(log[10] * " HIV RNA at baseline (copies/mL)"),
@@ -2403,6 +2766,12 @@ Subgroup_colors <- c(
 # Proteins
 # ---------------------------
 proteins_of_interest <- c("CD5", "DDX58", "IL17C", "ITGAV", "SKAP1", "LAG3")
+hiv_subgroups <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite controller"
+)
 
 # ---------------------------
 # Data (UPDATED)
@@ -2410,27 +2779,23 @@ proteins_of_interest <- c("CD5", "DDX58", "IL17C", "ITGAV", "SKAP1", "LAG3")
 scatter_data <- metadata |>
   filter(
     Disease == "HIV",
-    Subgroup %in% c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ),
+    Subgroup %in% hiv_subgroups,
     Timepoint == "Baseline"
   ) |>
   mutate(
-    CD4_baseline = `CD4 cell count (baseline)`
+    CD4_baseline = `CD4 cell count (baseline)`,
+    Subgroup = factor(Subgroup, levels = hiv_subgroups)
   ) |>
   select(DAid, CD4_baseline, Subgroup) |>
   filter(!is.na(CD4_baseline)) |>
   inner_join(data_wide, by = "DAid") |>
   pivot_longer(
     -c(DAid, CD4_baseline, Subgroup),
-    names_to  = "Assay",
+    names_to  = "Feature",
     values_to = "NPX"
   ) |>
   filter(
-    Assay %in% proteins_of_interest,
+    Feature %in% proteins_of_interest,
     !is.na(NPX)
   )
 
@@ -2438,7 +2803,7 @@ scatter_data <- metadata |>
 # Subgroup correlations (UPDATED)
 # ---------------------------
 subgroup_cor <- scatter_data |>
-  group_by(Assay, Subgroup) |>
+  group_by(Feature, Subgroup) |>
   summarise(
     test = list(cor.test(CD4_baseline, NPX,
                          method = "spearman",
@@ -2453,18 +2818,32 @@ subgroup_cor <- scatter_data |>
       ", p = ", signif(pval, 2)
     )
   ) |>
-  mutate(
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ))
+  arrange(Feature, Subgroup) |>
+  ungroup()
+
+# Position labels in each facet's native data coordinates.
+facet_label_pos <- scatter_data |>
+  group_by(Feature) |>
+  summarise(
+    x_min = min(CD4_baseline, na.rm = TRUE),
+    x_max = max(CD4_baseline, na.rm = TRUE),
+    y_min = min(NPX, na.rm = TRUE),
+    y_max = max(NPX, na.rm = TRUE),
+    .groups = "drop"
   ) |>
-  arrange(Assay, Subgroup) |>
-  group_by(Assay) |>
   mutate(
-    y_pos = 0.95 - (row_number() - 1) * 0.08
+    x_range = pmax(x_max - x_min, 1),
+    y_range = pmax(y_max - y_min, 1),
+    x_pos   = x_min + 0.03 * x_range,
+    y_top   = y_max - 0.04 * y_range,
+    y_step  = 0.12 * y_range
+  )
+
+subgroup_cor <- subgroup_cor |>
+  left_join(facet_label_pos, by = "Feature") |>
+  group_by(Feature) |>
+  mutate(
+    y_pos = y_top - (row_number() - 1) * y_step
   ) |>
   ungroup()
 
@@ -2472,7 +2851,7 @@ subgroup_cor <- scatter_data |>
 # Global correlations (UPDATED)
 # ---------------------------
 global_cor <- scatter_data |>
-  group_by(Assay) |>
+  group_by(Feature) |>
   summarise(
     test = list(cor.test(CD4_baseline, NPX,
                          method = "spearman",
@@ -2483,13 +2862,13 @@ global_cor <- scatter_data |>
     R    = map_dbl(test, ~ .x$estimate),
     pval = map_dbl(test, ~ .x$p.value),
     facet_label = paste0(
-      Assay,
+      Feature,
       "\nR = ", sprintf("%.2f", R),
       ", p = ", signif(pval, 2)
     )
   )
 
-facet_labels <- setNames(global_cor$facet_label, global_cor$Assay)
+facet_labels <- setNames(global_cor$facet_label, global_cor$Feature)
 
 # ---------------------------
 # Plot (UPDATED)
@@ -2510,26 +2889,28 @@ p_cd4_corr <- ggplot(
   geom_text(
     data = subgroup_cor,
     aes(
-      x = -Inf,
+      x = x_pos,
       y = y_pos,
       label = label,
       color = Subgroup
     ),
     hjust = 0,
     vjust = 1,
-    nudge_x = 0.10,
     size = 3.2,
-    lineheight = 1.25,
+    lineheight = 1.15,
+    show.legend = FALSE,
     inherit.aes = FALSE
   ) +
 
   facet_wrap(
-    ~ Assay,
+    ~ Feature,
     scales = "free_y",
     labeller = as_labeller(facet_labels)
   ) +
 
   scale_color_manual(values = Subgroup_colors) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.20))) +
   coord_cartesian(clip = "off") +
   theme_hiv() +
   labs(
@@ -2802,6 +3183,12 @@ Subgroup_colors <- c(
 # Proteins (UPDATED)
 # ---------------------------
 proteins_of_interest <- c("KIR3DL1", "CRTAM", "CD8A", "ITGAV", "LAG3", "SIGLEC1")
+hiv_subgroups <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite controller"
+)
 
 # ---------------------------
 # Data (UPDATED → CD4/CD8 ratio)
@@ -2809,27 +3196,23 @@ proteins_of_interest <- c("KIR3DL1", "CRTAM", "CD8A", "ITGAV", "LAG3", "SIGLEC1"
 scatter_data <- metadata |>
   filter(
     Disease == "HIV",
-    Subgroup %in% c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ),
+    Subgroup %in% hiv_subgroups,
     Timepoint == "Baseline"
   ) |>
   mutate(
-    CD4CD8_baseline = `CD4/CD8 ratio (baseline)`
+    CD4CD8_baseline = `CD4/CD8 ratio (baseline)`,
+    Subgroup = factor(Subgroup, levels = hiv_subgroups)
   ) |>
   select(DAid, CD4CD8_baseline, Subgroup) |>
   filter(!is.na(CD4CD8_baseline)) |>
   inner_join(data_wide, by = "DAid") |>
   pivot_longer(
     -c(DAid, CD4CD8_baseline, Subgroup),
-    names_to  = "Assay",
+    names_to  = "Feature",
     values_to = "NPX"
   ) |>
   filter(
-    Assay %in% proteins_of_interest,
+    Feature %in% proteins_of_interest,
     !is.na(NPX)
   )
 
@@ -2837,7 +3220,7 @@ scatter_data <- metadata |>
 # Subgroup correlations
 # ---------------------------
 subgroup_cor <- scatter_data |>
-  group_by(Assay, Subgroup) |>
+  group_by(Feature, Subgroup) |>
   summarise(
     test = list(cor.test(CD4CD8_baseline, NPX,
                          method = "spearman",
@@ -2852,18 +3235,32 @@ subgroup_cor <- scatter_data |>
       ", p = ", signif(pval, 2)
     )
   ) |>
-  mutate(
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "More preserved immunity",
-      "Severely impaired immunity",
-      "Elite controller"
-    ))
+  arrange(Feature, Subgroup) |>
+  ungroup()
+
+# Position labels in each facet's native data coordinates.
+facet_label_pos <- scatter_data |>
+  group_by(Feature) |>
+  summarise(
+    x_min = min(CD4CD8_baseline, na.rm = TRUE),
+    x_max = max(CD4CD8_baseline, na.rm = TRUE),
+    y_min = min(NPX, na.rm = TRUE),
+    y_max = max(NPX, na.rm = TRUE),
+    .groups = "drop"
   ) |>
-  arrange(Assay, Subgroup) |>
-  group_by(Assay) |>
   mutate(
-    y_pos = 0.95 - (row_number() - 1) * 0.08   # 🔑 fixed top-left stacking
+    x_range = pmax(x_max - x_min, 1),
+    y_range = pmax(y_max - y_min, 1),
+    x_pos   = x_min + 0.03 * x_range,
+    y_top   = y_max - 0.04 * y_range,
+    y_step  = 0.12 * y_range
+  )
+
+subgroup_cor <- subgroup_cor |>
+  left_join(facet_label_pos, by = "Feature") |>
+  group_by(Feature) |>
+  mutate(
+    y_pos = y_top - (row_number() - 1) * y_step
   ) |>
   ungroup()
 
@@ -2871,7 +3268,7 @@ subgroup_cor <- scatter_data |>
 # Global correlations (facet titles)
 # ---------------------------
 global_cor <- scatter_data |>
-  group_by(Assay) |>
+  group_by(Feature) |>
   summarise(
     test = list(cor.test(CD4CD8_baseline, NPX,
                          method = "spearman",
@@ -2882,13 +3279,13 @@ global_cor <- scatter_data |>
     R    = map_dbl(test, ~ .x$estimate),
     pval = map_dbl(test, ~ .x$p.value),
     facet_label = paste0(
-      Assay,
+      Feature,
       "\nR = ", sprintf("%.2f", R),
       ", p = ", signif(pval, 2)
     )
   )
 
-facet_labels <- setNames(global_cor$facet_label, global_cor$Assay)
+facet_labels <- setNames(global_cor$facet_label, global_cor$Feature)
 
 # ---------------------------
 # Plot
@@ -2909,26 +3306,28 @@ p_cd4cd8_corr <- ggplot(
   geom_text(
     data = subgroup_cor,
     aes(
-      x = -Inf,
+      x = x_pos,
       y = y_pos,
       label = label,
       color = Subgroup
     ),
     hjust = 0,
     vjust = 1,
-    nudge_x = 0.10,
     size = 3.2,
-    lineheight = 1.25,
+    lineheight = 1.15,
+    show.legend = FALSE,
     inherit.aes = FALSE
   ) +
 
   facet_wrap(
-    ~ Assay,
+    ~ Feature,
     scales = "free_y",
     labeller = as_labeller(facet_labels)
   ) +
 
   scale_color_manual(values = Subgroup_colors) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.20))) +
   coord_cartesian(clip = "off") +
   theme_hiv() +
   labs(
@@ -2984,6 +3383,24 @@ ggsave("../plots/pdf/correlation/corr_cd4cd8_top_proteins.pdf", plot = p_cd4cd8_
 ggsave("../plots/png/corr_cd4cd8_top_proteins.png", plot = p_cd4cd8_corr, width = 16, height = 10, dpi = 300)
 ```
 
+### Combine
+
+```{r}
+library(patchwork)
+# Combine all S10 plots into one figure and have the legend to the right
+# A, B, C
+# D, E, F
+# G, H, I
+combined_s10 <- (p_corr_hiv_baseline_proteome_baseline + p_corr_hiv_fu_fu_proteome + p_hivrna_corr) /
+  (p_corr_cd4_baseline_proteome_baseline + p_corr_cd4_fu_fu_proteome + p_cd4_corr) /
+  (p_corr_cd4cd8_baseline_proteome_baseline + p_corr_cd4cd8_followup_proteome + p_cd4cd8_corr) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+
+ggsave("../plots/pdf/correlation/combined_supplementary_figure_10.pdf", plot = combined_s10, width = 35, height = 25)
+ggsave("../plots/png/correlation/combined_supplementary_figure_10.png", plot = combined_s10, width = 35, height = 25, dpi = 300)
+```
+
 # Supplementary Figure 11
 
 ## S11A-S11E
@@ -3016,10 +3433,10 @@ plot_protein_clinical_correlation_per_subgroup <- function(
       distinct()
 
     npx_sub <- data_long %>%
-      filter(Assay %in% proteins) %>%
-      select(DAid, Assay, NPX) %>%
+      filter(Feature %in% proteins) %>%
+      select(DAid, Feature, NPX) %>%
       pivot_wider(
-        names_from  = Assay,
+        names_from  = Feature,
         values_from = NPX
       )
 
@@ -3176,12 +3593,6 @@ plot_protein_clinical_correlation_per_subgroup(
   protein_vector = my_proteins,
   subcategories  = subcategories_to_plot
 )
-```
-
-# Save Tables
-
-```{r}
-
 ```
 
 # SessionInfo
