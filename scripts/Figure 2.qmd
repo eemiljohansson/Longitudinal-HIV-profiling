@@ -16,6 +16,7 @@ library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
 library(ggbeeswarm)
+library(pROC)
 
 # Specify function
 select <- dplyr::select
@@ -39,17 +40,20 @@ data_long <- read_csv("../data/curated/data_long.csv")
 data_wide <- read_csv("../data/curated/data_wide.csv")
 data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
 data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
-```
 
-# Figure 2
+# Palette
+Subgroup_colors <- c(
+  "Primary HIV infection"       = "#4B988F",
+  "Severely impaired immunity"  = "#EABBBB",
+  "More preserved immunity"     = "#C89A1B",
+  "Elite controller"            = "#5A588B"
+)
 
-## Figure 2A
+set_colors <- Subgroup_colors
 
-```{r}
-# 1. Define CD4/CD8 category levels (legend order)
+# Levels
 cd4cd8_levels <- c("Normal", "Low", "Very low")
 
-# 2. Define subgroup order
 subgroup_levels <- c(
   "Elite controller",
   "More preserved immunity",
@@ -57,7 +61,15 @@ subgroup_levels <- c(
   "Primary HIV infection"
 )
 
-# 3. Prepare data
+# Set cut-off
+fdr_cutoff <- 0.5
+```
+
+# Figure 2
+
+## Figure 2A
+
+```{r}
 cd4cd8_baseline <- metadata %>%
   filter(Disease == "HIV") %>%
   distinct(ID, .keep_all = TRUE) %>%
@@ -68,18 +80,18 @@ cd4cd8_baseline <- metadata %>%
   ) %>%
   count(Subgroup, status)
 
-# 4. Calculate totals
+# Calculate totals
 subgroup_totals <- cd4cd8_baseline %>%
   group_by(Subgroup) %>%
   summarise(total = sum(n), .groups = "drop")
 
-# 5. Create label vector that preserves subgroup names
+# Create label vector that preserves subgroup names
 subgroup_labels <- setNames(
   paste0(subgroup_totals$Subgroup, " (n=", subgroup_totals$total, ")"),
   subgroup_totals$Subgroup
 )
 
-# 6. Plot
+# Plot
 p_cd4cd8_baseline <- ggplot(cd4cd8_baseline,
                             aes(x = Subgroup, y = n, fill = status)) +
   geom_col(color = "white", width = 0.7) +
@@ -161,10 +173,10 @@ p_pca_baseline_subgroup
 
 ```{r}
 # Save PCA variance and loadings for Figure 2B
-fig2b_pca <- pca_df$pca_variance |> mutate(Figure = "Figure 1B") |> mutate(Comparison = "HIV (baseline)")
+fig2b_pca <- pca_df$pca_variance |> mutate(Figure = "Figure 2B") |> mutate(Groups = "HIV (baseline)")
 fig2b_pca |> write_xlsx("../tables/PCA/fig2b_pca_variance.xlsx")
 
-fig2b_pca_contribution <- pca_df$pca_loadings |> mutate(Figure = "Figure 1B") |> mutate(Comparison = "HIV (baseline)") |>
+fig2b_pca_contribution <- pca_df$pca_loadings |> mutate(Figure = "Figure 2B") |> mutate(Comparison = "HIV (baseline)") |>
   # select the top 15 terms from PC1 and PC2
   group_by(component) |> slice_max(order_by = abs(value), n = 15) |> ungroup() |> filter(component %in% c("PC1", "PC2"))
 fig2b_pca_contribution |> write_xlsx("../tables/PCA/fig2b_pca_loadings.xlsx")
@@ -367,15 +379,6 @@ p_bar_subgroup_baseline_healthy
 ## Figure 2F
 
 ```{r}
-fdr_cutoff <- 0.5
-
-set_colors <- c(
-  "#5A588B",  # EC
-  "#C89A1B",  # MPI
-  "#EABBBB",  # SII
-  "#4B988F"   # PHI
-)
-
 # --------------------------------------------------
 # 1. Define result list (reversed order)
 # --------------------------------------------------
@@ -444,18 +447,6 @@ dev.off()
 ## Figure 2G
 
 ```{r}
-library(dplyr)
-library(UpSetR)
-
-fdr_cutoff <- 0.5
-
-set_colors <- c(
-  "#5A588B",  # EC
-  "#C89A1B",  # MPI
-  "#EABBBB",  # SII
-  "#4B988F"   # PHI
-)
-
 # --------------------------------------------------
 # 1. Define result list (reversed order)
 # --------------------------------------------------
@@ -1244,10 +1235,6 @@ model_output_lasso_only_proteins_baseline$metrics$auc
 ```
 
 ```{r}
-library(dplyr)
-library(purrr)
-library(HDAnalyzeR)
-
 # --------------------------------------------------
 # Prepare metadata
 # --------------------------------------------------
@@ -1339,10 +1326,6 @@ names(model_results) <- paste0("split_", seq_len(n_splits))
 ```
 
 ```{r}
-library(dplyr)
-library(purrr)
-library(ggplot2)
-
 # --------------------------------------------------
 # 1. Extract feature importance from all splits
 # --------------------------------------------------
@@ -1485,12 +1468,6 @@ multivariate_lasso_baseline <- plot_df
 ## Figure S5B
 
 ```{r}
-library(dplyr)
-library(purrr)
-library(tidyr)
-library(ggplot2)
-library(pROC)
-
 # --------------------------------------------------
 # 1. Extract ROC curves from all splits
 # --------------------------------------------------
@@ -1851,9 +1828,6 @@ ggsave(
 ```
 
 ```{r}
-library(dplyr)
-library(purrr)
-
 # --------------------------------------------------
 # Extract metrics per split
 # --------------------------------------------------
@@ -1991,10 +1965,190 @@ ggsave(
 )
 ```
 
-# Save Tables
+# Supplementary Figure 6
 
 ```{r}
+df_baseline <- metadata |>
+  filter(Disease == "HIV", Timepoint == "Baseline") |>
+  select(DAid, ID, Timepoint, Subgroup, BMI_bl = `BMI (baseline)`) |>
+  inner_join(
+    data_wide |> select(DAid, LEP_Baseline = LEP),
+    by = "DAid"
+  )
 
+df_fu <- metadata |>
+  filter(Disease == "HIV", Timepoint == "Follow-up") |>
+  select(DAid, ID, Timepoint, Subgroup, BMI_fu = `BMI (follow-up)`) |>
+  inner_join(
+    data_wide |> select(DAid, LEP_Followup = LEP),
+    by = "DAid"
+  )
+
+df <- df_baseline |>
+  inner_join(df_fu, by = c("ID")) |>
+  mutate(
+    BMI_delta = BMI_fu - BMI_bl,
+    LEP_delta = LEP_Followup - LEP_Baseline
+  ) |>
+  select(
+    ID,
+    Subgroup = Subgroup.x,
+    BMI_bl,
+    BMI_fu,
+    BMI_delta,
+    LEP_Baseline,
+    LEP_Followup,
+    LEP_delta
+  )
+
+# --------------------------------------------------
+# 3. Plot helper
+# --------------------------------------------------
+
+plot_scatter <- function(data, x, y, title, subtitle_text, xlab, ylab) {
+
+  cor_res <- cor.test(
+    data[[x]], data[[y]],
+    method = "spearman",
+    use = "complete.obs"
+  )
+
+  ggplot(data, aes(x = .data[[x]], y = .data[[y]], fill = Subgroup)) +
+    
+    geom_point(
+      shape = 21,
+      color = "black",
+      size = 3,
+      alpha = 0.8
+    ) +
+    
+    geom_smooth(
+      aes(group = 1),
+      method = "lm",
+      se = TRUE,
+      color = "black",
+      linewidth = 1
+    ) +
+    
+    scale_fill_manual(values = Subgroup_colors) +
+    
+    labs(
+      title = title,
+      subtitle = paste0(
+        subtitle_text,
+        "\nrho = ", round(cor_res$estimate, 2),
+        ", p = ", signif(cor_res$p.value, 2)
+      ),
+      x = xlab,
+      y = ylab,
+      fill = "HIV-1 subgroup"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold")
+    )
+}
+
+# --------------------------------------------------
+# 4. Create plots
+# --------------------------------------------------
+
+# Baseline
+p1 <- plot_scatter(
+  df, "BMI_bl", "LEP_Baseline",
+  "BMI vs LEP",
+  "At baseline",
+  "BMI (at baseline)",
+  "LEP (baseline, NPX)"
+)
+
+# Follow-up
+p2 <- plot_scatter(
+  df, "BMI_fu", "LEP_Followup",
+  "BMI vs LEP",
+  "At follow-up",
+  "BMI (at follow-up)",
+  "LEP (follow-up, NPX)"
+)
+
+# ΔBMI vs LEP baseline
+p3 <- plot_scatter(
+  df, "BMI_delta", "LEP_Baseline",
+  "BMI vs LEP",
+  "Follow-up - baseline",
+  "Delta BMI",
+  "LEP (baseline, NPX)"
+)
+
+# ΔBMI vs LEP follow-up
+p4 <- plot_scatter(
+  df, "BMI_delta", "LEP_Followup",
+  "BMI vs LEP",
+  "Follow-up - baseline",
+  "Delta BMI",
+  "LEP (follow-up, NPX)"
+)
+
+# ΔBMI vs ΔLEP (NEW)
+p5 <- plot_scatter(
+  df, "BMI_delta", "LEP_delta",
+  "BMI vs LEP",
+  "Follow-up - baseline",
+  "Delta BMI",
+  "Delta LEP (NPX)"
+)
+
+# --------------------------------------------------
+# 5. Combine (CENTERED p5)
+# --------------------------------------------------
+
+plot_final <- (p1 | p2) /
+              (p3 | p4) /
+              (plot_spacer() | p5 | plot_spacer()) +
+  
+  plot_layout(guides = "collect", heights = c(1, 1, 1.2)) +
+  
+  plot_annotation(
+    title = "BMI correlations with LEP",
+    theme = theme(
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
+    )
+  ) &
+  
+  theme(legend.position = "top")
+
+plot_final
+
+# --------------------------------------------------
+# 6. Save
+# --------------------------------------------------
+
+ggsave("../plots/pdf/scatter/BMI_LEP_correlations.pdf",
+       plot_final, width = 12, height = 12, dpi = 300)
+
+ggsave("../plots/png/scatter/BMI_LEP_correlations.png",
+       plot_final, width = 12, height = 12, dpi = 300)
+
+df |>
+  filter(!is.na(BMI_bl & !is.na(LEP_Baseline))) |>
+  count()
+
+df |>
+  filter(!is.na(BMI_fu & !is.na(LEP_Followup))) |>
+  count()
+
+df |>
+  filter(!is.na(BMI_delta & !is.na(LEP_Baseline))) |>
+  count()
+
+df |>
+  filter(!is.na(BMI_delta & !is.na(LEP_Followup))) |>
+  count()
+
+df |>
+  filter(!is.na(BMI_delta & !is.na(LEP_delta))) |>
+  count()
 ```
 
 # SessionInfo
