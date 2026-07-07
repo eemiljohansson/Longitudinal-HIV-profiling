@@ -24,6 +24,55 @@ source("../scripts/functions/themes_palettes.R")
 
 # Read data
 metadata <- read_csv("../data/curated/metadata.csv")
+
+# Palette
+Subgroup_colors <- c(
+  "Primary HIV infection"       = "#4B988F",
+  "Severely impaired immunity"  = "#EABBBB",
+  "More preserved immunity"     = "#C89A1B",
+  "Elite controller"            = "#5A588B"
+)
+
+stratum_colors <- c(
+  # Subgroup
+  "Elite controller" = "#1b9e77",
+  "More preserved immunity" = "#d95f02",
+  "Severely impaired immunity" = "#7570b3",
+  "Primary HIV infection" = "#e7298a",
+  # CD4/CD8 status
+  "Normal" = "#1B9E77",
+  "Low" = "#CCCCCC",
+  "Very low" = "#D95F02",
+  # ART
+  "INSTI" = "#e78ac3",
+  "NNRTI" = "#a6d854",
+  "Other" = "#ffd92f",
+  "Untreated" = "#e5c494",
+  # Backbone
+  "Abacavir" = "#b3b3b3",
+  "Tenofovir" = "#80b1d3"
+)
+
+# Levels
+cd4cd8_levels <- c("Normal", 
+                   "Low", 
+                   "Very low")
+
+Subgroup_levels <- c("Elite controller", 
+                     "More preserved immunity",
+                     "Severely impaired immunity", 
+                     "Primary HIV infection")
+
+art_levels <- c("Untreated", "Other", "INSTI", "NNRTI")
+
+backbone_levels <- c("Untreated", "Other", "Abacavir", "Tenofovir")
+
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
 ```
 
 # Figure 1
@@ -31,10 +80,6 @@ metadata <- read_csv("../data/curated/metadata.csv")
 ## Figure 1B
 
 ```{r}
-library(dplyr)
-library(ggplot2)
-library(ggridges)
-
 # --------------------------------------------------
 # 1. Prepare dataset
 # --------------------------------------------------
@@ -115,14 +160,6 @@ density_age
 ## Figure 1C
 
 ```{r}
-# Desired order
-subgroup_levels <- c(
-  "Elite controller",
-  "More preserved immunity",
-  "Severely impaired immunity",
-  "Primary HIV infection"
-)
-
 # Summarize counts per Subgroup × Sex
 sex_summary <- metadata %>%
   filter(Disease == "HIV") %>%
@@ -248,38 +285,6 @@ bar_improvements
 
 ```{r}
 # -----------------------------
-# Define categorical levels
-# -----------------------------
-cd4cd8_levels <- c("Normal", "Low", "Very low")
-Subgroup_levels <- c("Elite controller", "More preserved immunity",
-                        "Severely impaired immunity", "Primary HIV infection")
-art_levels <- c("Untreated", "Other", "INSTI", "NNRTI")
-backbone_levels <- c("Untreated", "Other", "Abacavir", "Tenofovir")
-
-# -----------------------------
-# Define color palettes
-# -----------------------------
-stratum_colors <- c(
-  # Subgroup
-  "Elite controller" = "#1b9e77",
-  "More preserved immunity" = "#d95f02",
-  "Severely impaired immunity" = "#7570b3",
-  "Primary HIV infection" = "#e7298a",
-  # CD4/CD8 status
-  "Normal" = "#66c2a5",
-  "Low" = "#fc8d62",
-  "Very low" = "#8da0cb",
-  # ART
-  "INSTI" = "#e78ac3",
-  "NNRTI" = "#a6d854",
-  "Other" = "#ffd92f",
-  "Untreated" = "#e5c494",
-  # Backbone
-  "Abacavir" = "#b3b3b3",
-  "Tenofovir" = "#80b1d3"
-)
-
-# -----------------------------
 # Prepare data
 # -----------------------------
 plot_data <- metadata %>%
@@ -342,7 +347,7 @@ sankey_plot <- ggplot(
   scale_fill_manual(values = stratum_colors, name = "Group") +
   scale_x_discrete(
     limits = c("Subgroup", "CD4/CD8 status (baseline)",
-               "ART", "Backbone", "CD4/CD8 status (follow-up)"),
+               "ART", "Backbone", "CD4/CD8 T-cell status (follow-up)"),
     expand = c(0.05, 0.05)
   ) +
   labs(
@@ -368,11 +373,9 @@ sankey_plot
 ## Figure S1A
 
 ```{r}
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-
-# 1) Pivot your HIV-RNA values into long form, drop Healthy
+# ---------------------------
+# 1) Prepare data
+# ---------------------------
 df_rna <- metadata %>%
   filter(Disease != "Healthy") %>%
   select(ID, Subgroup,
@@ -384,35 +387,54 @@ df_rna <- metadata %>%
     values_to = "HIV_RNA"
   ) %>%
   mutate(
-    Timepoint   = recode(Timepoint,
-                         `HIV-RNA (baseline)`      = "Baseline",
-                         `HIV-RNA (follow-up)`     = "Follow-up"),
-    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "Severely impaired immunity",
-      "More preserved immunity",
-      "Elite controller"
-    ))
+    Timepoint = recode(Timepoint,
+                       `HIV-RNA (baseline)`  = "Baseline",
+                       `HIV-RNA (follow-up)` = "Follow-up"),
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup  = factor(Subgroup, levels = names(Subgroup_colors))
   ) %>%
   filter(!is.na(HIV_RNA))
 
-# 2) Plot: boxplots + paired lines + points, faceted by Subgroup
+# ---------------------------
+# 2) Plot
+# ---------------------------
 p_rna <- ggplot(df_rna, aes(x = Timepoint, y = log10(HIV_RNA))) +
-  # boxplots (no outliers)
-  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
-  # lines connecting each ID
-  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
-  # points overlaid (vertical jitter)
-  geom_point(aes(color = Subgroup),
-             position = position_jitter(width = 0, height = 0.1),
-             size     = 2, alpha = 0.8) +
+  
+  # reference lines FIRST (background)
   geom_hline(yintercept = log10(20),  color = "gray50", linetype = "dashed", alpha = 0.5) +
   geom_hline(yintercept = log10(75),  color = "gray50", linetype = "dashed", alpha = 0.5) +
-  geom_hline(yintercept = log10(400),  color = "gray50", linetype = "dashed", alpha = 0.5) +
-  # facets in one row
+  geom_hline(yintercept = log10(400), color = "gray50", linetype = "dashed", alpha = 0.5) +
+  
+  # boxplots
+  geom_boxplot(
+    aes(fill = Subgroup),
+    outlier.shape = NA,
+    width = 0.5,
+    alpha = 0.4
+  ) +
+  
+  # subgroup-colored paired lines
+  geom_line(
+    aes(group = ID, color = Subgroup),
+    linewidth = 0.5,
+    alpha = 0.4
+  ) +
+  
+  # 🔹 points on top
+  geom_point(
+    aes(color = Subgroup),
+    position = position_jitter(width = 0, height = 0.1),
+    size = 2,
+    alpha = 0.9
+  ) +
+  
+  # facets
   facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
-  scale_color_brewer(palette = "Set1") +
+  
+  # colors
+  scale_color_manual(values = Subgroup_colors) +
+  scale_fill_manual(values = Subgroup_colors) +
+  
   theme_classic() +
   theme(
     axis.text.x      = element_text(angle = 45, hjust = 1),
@@ -422,8 +444,8 @@ p_rna <- ggplot(df_rna, aes(x = Timepoint, y = log10(HIV_RNA))) +
   ) +
   labs(
     x     = NULL,
-    y     = "HIV-RNA log10(copies/mL)",
-    title = "HIV-RNA copies at baseline vs follow-up by HIV-1 subgroup"
+    y     = expression(log[10] * " HIV RNA (copies/mL)"),
+    title = "HIV-RNA at baseline vs follow-up by HIV-1 subgroup"
   )
 
 p_rna
@@ -432,7 +454,9 @@ p_rna
 ## Figure S1B
 
 ```{r}
-# 1) Prep data exactly as before
+---------------------------
+# 1) Prepare data
+# ---------------------------
 df_cd4 <- metadata %>%
   filter(Disease != "Healthy") %>%
   select(ID, Subgroup,
@@ -447,31 +471,50 @@ df_cd4 <- metadata %>%
     Timepoint = recode(Timepoint,
                        `CD4 cell count (baseline)`  = "Baseline",
                        `CD4 cell count (follow-up)` = "Follow-up"),
-    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "Severely impaired immunity",
-      "More preserved immunity",
-      "Elite controller"
-    ))
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup  = factor(Subgroup, levels = names(Subgroup_colors))
   ) %>%
   filter(!is.na(CD4))
 
-# 2) Plot: boxplots + connecting lines + points, faceted
+# ---------------------------
+# 2) Plot
+# ---------------------------
 p_cd4_lines_ref <- ggplot(df_cd4, aes(x = Timepoint, y = CD4)) +
-  # reference lines at 250 and 350
+  
+  # reference lines (clinical thresholds)
   geom_hline(yintercept = 250, color = "gray50", linetype = "dashed", alpha = 0.5) +
   geom_hline(yintercept = 350, color = "gray50", linetype = "dashed", alpha = 0.5) +
-  # boxplots (no outliers)
-  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
-  # connecting lines
-  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
+  
+  # boxplots (colored per subgroup)
+  geom_boxplot(
+    aes(fill = Subgroup),
+    outlier.shape = NA,
+    width = 0.5,
+    alpha = 0.4
+  ) +
+  
+  # paired lines (subgroup-colored)
+  geom_line(
+    aes(group = ID, color = Subgroup),
+    linewidth = 0.5,
+    alpha = 0.4
+  ) +
+  
   # points
-  geom_point(aes(color = Subgroup),
-             position = position_jitter(width = 0, height = 0.2),
-             size     = 2, alpha = 0.8) +
+  geom_point(
+    aes(color = Subgroup),
+    position = position_jitter(width = 0, height = 0.2),
+    size = 2,
+    alpha = 0.9
+  ) +
+  
+  # facets
   facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
-  scale_color_brewer(palette = "Set1") +
+  
+  # 🔑 Apply palette
+  scale_color_manual(values = Subgroup_colors) +
+  scale_fill_manual(values = Subgroup_colors) +
+  
   theme_classic() +
   theme(
     axis.text.x      = element_text(angle = 45, hjust = 1),
@@ -481,7 +524,7 @@ p_cd4_lines_ref <- ggplot(df_cd4, aes(x = Timepoint, y = CD4)) +
   ) +
   labs(
     x     = NULL,
-    y     = "CD4 T-cell count (cells/µL)",
+    y     = expression("CD4 T-cell count (cells/"*mu*"L)"),
     title = "CD4 T-cell count at baseline vs follow-up by HIV-1 subgroup"
   )
 
@@ -491,7 +534,9 @@ p_cd4_lines_ref
 ## Figure S1C
 
 ```{r}
-# 1) Build a long‐form data.frame of the CD4/CD8 ratios
+# ---------------------------
+# 1) Prepare data
+# ---------------------------
 df_ratio <- metadata %>%
   filter(Disease != "Healthy") %>%
   select(ID, Subgroup,
@@ -503,37 +548,53 @@ df_ratio <- metadata %>%
     values_to = "Ratio"
   ) %>%
   mutate(
-    Timepoint   = recode(Timepoint,
-                         `CD4/CD8 ratio (baseline)`  = "Baseline",
-                         `CD4/CD8 ratio (follow-up)` = "Follow-up"),
-    Timepoint   = factor(Timepoint, levels = c("Baseline", "Follow-up")),
-    Subgroup = factor(Subgroup, levels = c(
-      "Primary HIV infection",
-      "Severely impaired immunity",
-      "More preserved immunity",
-      "Elite controller"
-    ))
+    Timepoint = recode(Timepoint,
+                       `CD4/CD8 ratio (baseline)`  = "Baseline",
+                       `CD4/CD8 ratio (follow-up)` = "Follow-up"),
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Subgroup  = factor(Subgroup, levels = names(Subgroup_colors))
   ) %>%
   filter(!is.na(Ratio))
 
-# 2) Plot: boxplots + paired lines + points + reference lines at 0.5 & 1
+# ---------------------------
+# 2) Plot
+# ---------------------------
 p_ratio <- ggplot(df_ratio, aes(x = Timepoint, y = Ratio)) +
-  # reference lines (horizontal) at 0.5 and 1
-  geom_hline(yintercept = 0.5,  color = "gray50", linetype = "dashed", alpha = 0.5) +
-  geom_hline(yintercept = 1,  color = "gray50", linetype = "dashed", alpha = 0.5) +
+  
+  # reference lines (clinical interpretation)
+  geom_hline(yintercept = 0.5, color = "gray50", linetype = "dashed", alpha = 0.5) +
+  geom_hline(yintercept = 1.0, color = "gray50", linetype = "dashed", alpha = 0.5) +
+  
   # boxplots
-  geom_boxplot(outlier.shape = NA, width = 0.5, fill = "grey90") +
-  # lines connecting each ID
-  geom_line(aes(group = ID), color = "grey70", size = 0.5, alpha = 0.6) +
+  geom_boxplot(
+    aes(fill = Subgroup),
+    outlier.shape = NA,
+    width = 0.5,
+    alpha = 0.4
+  ) +
+  
+  # paired lines (colored)
+  geom_line(
+    aes(group = ID, color = Subgroup),
+    linewidth = 0.5,
+    alpha = 0.4
+  ) +
+  
   # points
-  geom_point(aes(color = Subgroup),
-             position = position_jitter(width = 0, height = 0.02),
-             size     = 2, alpha = 0.8) +
-  # facet by Subgroup
+  geom_point(
+    aes(color = Subgroup),
+    position = position_jitter(width = 0, height = 0.02),
+    size = 2,
+    alpha = 0.9
+  ) +
+  
+  # facets
   facet_wrap(~ Subgroup, nrow = 1, scales = "fixed") +
-  # colors
-  scale_color_brewer(palette = "Set1") +
-  # clean theme
+  
+  # apply palette
+  scale_color_manual(values = Subgroup_colors) +
+  scale_fill_manual(values = Subgroup_colors) +
+  
   theme_classic() +
   theme(
     axis.text.x      = element_text(angle = 45, hjust = 1),
@@ -543,8 +604,8 @@ p_ratio <- ggplot(df_ratio, aes(x = Timepoint, y = Ratio)) +
   ) +
   labs(
     x     = NULL,
-    y     = "CD4/CD8 T-cell count ratio",
-    title = "CD4/CD8 T-cell count ratio at baseline vs follow-up by HIV-1 subgroup"
+    y     = "CD4/CD8 T-cell ratio",
+    title = "CD4/CD8 T-cell ratio at baseline vs follow-up by HIV-1 subgroup"
   )
 
 p_ratio
