@@ -30,52 +30,2332 @@ ggplot2::update_geom_defaults(
 
 # Source scripts
 source("../scripts/functions/themes_palettes.R")
+source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
-
-# Figure 3
-
-## Figure 3A
 
 ```{r}
-
+# Count Specific backbone 2
+metadata |>
+  filter(Disease == "HIV") |>
+  distinct(ID, .keep_all = TRUE) |>
+  count(`Specific backbone 2`)
 ```
 
-## Figure 3B
+# Figure 5
+
+## Figure 5A
 
 ```{r}
+# 1. Define factor levels
+treatment_levels <- c(
+  "INSTI + Other",
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir",
+  "Untreated",
+  "Other + Abacavir",
+  "Other + Tenofovir",
+  "NNRTI + Abacavir"
+)
 
+Subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+# 2. Summarize Treatment by Subgroup
+treatment_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    # Replace missing treatments with "Other + Other" placeholder
+    Treatment = ifelse(is.na(Treatment), "Other + Other", Treatment),
+    
+    # Elite controllers are always considered untreated
+    Treatment = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      TRUE ~ Treatment
+    ),
+    
+    # Recode any treatments not in the predefined levels as "Other + Other"
+    Treatment = ifelse(!Treatment %in% treatment_levels, "Other + Other", Treatment),
+    
+    Treatment = factor(Treatment, levels = treatment_levels),
+    Subgroup = factor(Subgroup, levels = Subgroup_levels)
+  ) %>%
+  count(Treatment, Subgroup)
+
+# 3. Stacked barplot: Treatment on y-axis, colored by Subgroup
+ggplot(treatment_summary, aes(y = Treatment, x = n, fill = Subgroup)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Primary HIV infection" = "#1b9e77",
+      "More preserved immunity" = "#d95f02",
+      "Elite controller" = "#7570b3",
+      "Severely impaired immunity" = "#e7298a"
+    )
+  ) +
+  scale_x_continuous(expand = expansion(add = c(0, 0)),
+                     name = "Number of individuals") +
+  labs(
+    title = "Subgroup distribution by treatment combination",
+    y = "Treatment combination",
+    fill = "Subgroup"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 12),
+    legend.position = "right"
+  ) +
+  theme_hiv()
+
+# 4. Save outputs
+ggsave("../plots/pdf/bar/stacked_bar_treatment_combinations.pdf", width = 14, height = 7)
+ggsave("../plots/png/bar/stacked_bar_treatment_combinations.png", width = 14, height = 7)
 ```
 
-## Figure 3C
+## Figure 5B
 
 ```{r}
+# ---------------------------
+# 0. Define treatment levels
+# ---------------------------
+treatment_levels <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir",
+  "Untreated",
+  "Other"
+)
 
+# ---------------------------
+# 1. Compute Δ CD4/CD8 and harmonise treatments
+# ---------------------------
+cd4_cd8_df <- metadata %>%
+  filter(Disease == "HIV") %>%
+  mutate(
+    delta_CD4CD8 =
+      `CD4/CD8 ratio (follow-up)` -
+      `CD4/CD8 ratio (baseline)`,
+
+    # Handle missing treatment
+    Treatment = if_else(is.na(Treatment), "Other", Treatment),
+
+    # Elite controllers are untreated
+    Treatment = if_else(
+      Subgroup == "Elite controller",
+      "Untreated",
+      Treatment
+    ),
+
+    # Collapse everything else into "Other"
+    Treatment = if_else(
+      Treatment %in% treatment_levels,
+      Treatment,
+      "Other"
+    ),
+
+    Treatment = factor(Treatment, levels = treatment_levels)
+  ) %>%
+  drop_na(delta_CD4CD8, Treatment) |>
+  distinct(ID, .keep_all = TRUE)
+
+# ---------------------------
+# 2. Sample counts per Treatment × Subgroup
+# ---------------------------
+n_labels <- cd4_cd8_df %>%
+  group_by(Treatment, Subgroup) %>%
+  summarise(
+    n = n(),
+    y_pos = max(delta_CD4CD8, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(label = paste0("n=", n))
+
+# ---------------------------
+# 3. Plot
+# ---------------------------
+p_cd4 <- ggplot(
+  cd4_cd8_df,
+  aes(
+    x = Treatment,
+    y = delta_CD4CD8,
+    fill = Subgroup
+  )
+) +
+  geom_boxplot(
+    aes(group = interaction(Treatment, Subgroup)),
+    outlier.shape = NA,
+    alpha = 0.7,
+    width = 0.6,
+    position = position_dodge(width = 0.8)
+  ) +
+  geom_quasirandom(
+    aes(
+      color = Subgroup,
+      group = interaction(Treatment, Subgroup)
+    ),
+    dodge.width = 0.8,
+    size = 2,
+    alpha = 0.6
+  ) +
+  geom_text(
+    data = n_labels,
+    aes(
+      x = Treatment,
+      y = y_pos + 0.05,
+      label = label,
+      color = Subgroup,
+      group = Subgroup
+    ),
+    position = position_dodge(width = 0.8),
+    size = 3.8,
+    vjust = 0
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  scale_fill_manual(values = c(
+      "Primary HIV infection" = "#1b9e77",
+      "More preserved immunity" = "#d95f02",
+      "Elite controller" = "#7570b3",
+      "Severely impaired immunity" = "#e7298a"
+    )) +
+  scale_color_manual(values = c(
+      "Primary HIV infection" = "#1b9e77",
+      "More preserved immunity" = "#d95f02",
+      "Elite controller" = "#7570b3",
+      "Severely impaired immunity" = "#e7298a"
+    )) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  labs(
+    title = "Change in CD4/CD8 ratio by treatment and HIV Subgroup",
+    subtitle = "Elite controllers included in the Untreated group",
+    y = expression(Delta * " CD4/CD8 ratio"),
+    x = "Treatment",
+    fill = "Subgroup",
+    color = "Subgroup"
+  ) +
+  theme_hiv()
+
+print(p_cd4)
+
+# ---------------------------
+# 4. Save
+# ---------------------------
+ggsave("../plots/pdf/boxplot/cd4_cd8_change_by_treatment_untreated.pdf", width = 16, height = 7)
+ggsave("../plots/png/boxplot/cd4_cd8_change_by_treatment_untreated.png", width = 16, height = 7)
 ```
 
-## Figure 3D
+### CD4 T-cell count change
 
 ```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
 
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ==================================================
+# 1. Define treatment levels
+# ==================================================
+
+treatment_levels <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir",
+  "Untreated",
+  "Other"
+)
+
+# ==================================================
+# 2. Compute Δ CD4 T-cell count
+# ==================================================
+
+cd4_df <- metadata %>%
+  filter(Disease == "HIV") %>%
+  mutate(
+    # 🔥 CHANGE HERE
+    delta_CD4 =
+      `CD4 cell count (follow-up)` -
+      `CD4 cell count (baseline)`,
+
+    # Handle missing treatment
+    Treatment = if_else(is.na(Treatment), "Other", Treatment),
+
+    # Elite controllers are untreated
+    Treatment = if_else(
+      Subgroup == "Elite controller",
+      "Untreated",
+      Treatment
+    ),
+
+    # Collapse others
+    Treatment = if_else(
+      Treatment %in% treatment_levels,
+      Treatment,
+      "Other"
+    ),
+
+    Treatment = factor(Treatment, levels = treatment_levels)
+  ) %>%
+  drop_na(delta_CD4, Treatment) %>%
+  distinct(ID, .keep_all = TRUE)
+
+# ==================================================
+# 3. Sample counts per Treatment × Subgroup
+# ==================================================
+
+n_labels <- cd4_df %>%
+  group_by(Treatment, Subgroup) %>%
+  summarise(
+    n = n(),
+    y_pos = max(delta_CD4, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(label = paste0("n=", n))
+
+# ==================================================
+# 4. Plot
+# ==================================================
+
+p_cd4 <- ggplot(
+  cd4_df,
+  aes(
+    x = Treatment,
+    y = delta_CD4,
+    fill = Subgroup
+  )
+) +
+  
+  geom_boxplot(
+    aes(group = interaction(Treatment, Subgroup)),
+    outlier.shape = NA,
+    alpha = 0.7,
+    width = 0.6,
+    position = position_dodge(width = 0.8)
+  ) +
+  
+  geom_quasirandom(
+    aes(
+      color = Subgroup,
+      group = interaction(Treatment, Subgroup)
+    ),
+    dodge.width = 0.8,
+    size = 2,
+    alpha = 0.6
+  ) +
+  
+  geom_text(
+    data = n_labels,
+    aes(
+      x = Treatment,
+      y = y_pos + 20,  # 🔥 adjust for CD4 scale
+      label = label,
+      color = Subgroup,
+      group = Subgroup
+    ),
+    position = position_dodge(width = 0.8),
+    size = 3.8,
+    vjust = 0
+  ) +
+  
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  
+  scale_fill_manual(values = c(
+    "Primary HIV infection" = "#1b9e77",
+    "More preserved immunity" = "#d95f02",
+    "Elite controller" = "#7570b3",
+    "Severely impaired immunity" = "#e7298a"
+  )) +
+  
+  scale_color_manual(values = c(
+    "Primary HIV infection" = "#1b9e77",
+    "More preserved immunity" = "#d95f02",
+    "Elite controller" = "#7570b3",
+    "Severely impaired immunity" = "#e7298a"
+  )) +
+  
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  
+  labs(
+    title = "Change in CD4 T-cell count by treatment and HIV subgroup",
+    subtitle = "Elite controllers included in the Untreated group",
+    y = expression(Delta * " CD4 T-cell count (cells/"*mu*"L)"),
+    x = "Treatment",
+    fill = "HIV-1 subgroup",
+    color = "HIV-1 subgroup"
+  ) +
+  
+  theme_hiv()
+
+p_cd4
+
+# ==================================================
+# 5. Save
+# ==================================================
+
+ggsave(
+  "../plots/pdf/boxplot/cd4_change_by_treatment.pdf",
+  p_cd4,
+  width = 16,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/boxplot/cd4_change_by_treatment.png",
+  p_cd4,
+  width = 16,
+  height = 7,
+  dpi = 300
+)
 ```
 
-## Figure 3E
+## Figure 5C
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller")
 
+input_df <- data_wide_ml |> 
+  filter(DAid %in% input_metadata$DAid)
 ```
-
-## Figure 3F
 
 ```{r}
-
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
 ```
 
-## Figure 3G
+```{r}
+# ---------------------------
+# Define treatment panels
+# ---------------------------
+treatment_panels <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Prepare PCA plotting data
+# ---------------------------
+plot_df <- pca_df$pca_res |>
+  inner_join(input_metadata, by = "DAid") |>
+  mutate(
+    ID = as.character(ID),
+    Facet_group = Treatment
+  ) |>
+  # keep treatments of interest + Healthy
+  filter(
+    Treatment %in% treatment_panels |
+      Subgroup == "Healthy"
+  )
+
+# ---------------------------
+# Duplicate Healthy into all treatment panes
+# ---------------------------
+healthy_df <- plot_df |>
+  filter(Subgroup == "Healthy") |>
+  select(-Facet_group) |>
+  expand_grid(Facet_group = treatment_panels)
+
+plot_df <- plot_df |>
+  filter(Subgroup != "Healthy") |>
+  bind_rows(healthy_df)
+
+plot_df$Facet_group <- factor(plot_df$Facet_group, levels = treatment_panels)
+
+# ---------------------------
+# PCA variance
+# ---------------------------
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_pca_treatment_timepoint <- ggplot(
+  plot_df,
+  aes(x = PC1, y = PC2)
+) +
+
+  # ---- Filled ellipses by Timepoint (per facet) ----
+  stat_ellipse(
+    aes(
+      fill  = Timepoint,
+      group = interaction(Timepoint, Facet_group)
+    ),
+    geom   = "polygon",
+    alpha  = 0.2,
+    colour = NA
+  ) +
+
+  # ---- Dashed ellipse outlines ----
+  stat_ellipse(
+    aes(
+      colour = Timepoint,
+      group  = interaction(Timepoint, Facet_group)
+    ),
+    linetype  = "dashed",
+    linewidth = 0.6
+  ) +
+
+  # ---- Paired baseline → follow-up lines (HIV only) ----
+  geom_line(
+    data = plot_df |>
+      filter(
+        Subgroup != "Healthy",
+        Timepoint %in% c("Baseline", "Follow-up")
+      ),
+    aes(group = interaction(ID, Facet_group)),
+    colour = "grey80",
+    alpha  = 0.5
+  ) +
+
+  # ---- Points ----
+  geom_point(
+    aes(color = Timepoint, shape = Timepoint),
+    size  = 3,
+    alpha = 0.8
+  ) +
+
+  facet_wrap(~ Facet_group, ncol = 3) +
+
+  # ---- Reference axes ----
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+
+  labs(
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = "Timepoint",
+    fill  = "Timepoint",
+    shape = "Timepoint"
+  ) +
+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  # Legend on top
+  theme_hiv() +
+  theme(legend.position = "top")
+
+p_pca_treatment_timepoint + coord_equal()
+
+ggsave(filename = "pca_treatment_timepoint_facets_hiv_healthy.pdf", path = "../plots/pdf/pca/", width = 14, height = 10)
+ggsave(filename = "pca_treatment_timepoint_facets_hiv_healthy.png", path = "../plots/png/pca/", width = 14, height = 10)
+```
+
+## Figure 5D
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Abacavir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("Subgroup"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "INSTI + Abacavir: follow-up vs. baseline",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instiaa_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot insti fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5E
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Tenofovir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("Subgroup"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "INSTI + Tenofovir: follow-up vs. baseline",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instite_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instite_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5F
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "NNRTI + Tenofovir") |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = c("Subgroup"),
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "NNRTI + Tenofovir: follow-up vs. baseline",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_nnrtite_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_nnrtite_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5G
+
+```{r}
+venn_sets <- list(
+  "INSTI + Abacavir" =
+    res_instiaa_fu_baseline |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "INSTI + Tenofovir" =
+    res_instite_fu_baseline |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature),
+
+  "NNRTI + Tenofovir" =
+    res_nnrtite_fu_baseline |>
+      filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+      pull(Feature)
+)
+
+# Ensure uniqueness
+venn_sets <- lapply(venn_sets, unique)
+
+# Sanity check: number of proteins per set
+sapply(venn_sets, length)
+
+# Inspect contents if needed
+venn_sets
+
+venn_colors <- c("#4B988F", "#C89A1B", "#EABBBB")
+
+library(ggvenn)
+
+p_venn <- ggvenn(
+  venn_sets,
+  fill_color   = venn_colors,
+  fill_alpha   = 0.6,
+  stroke_size  = 0.8,
+  set_name_size = 5,
+  text_size     = 4,
+  show_elements = FALSE
+) +
+  ggtitle(
+    "Overlap of differentially abundant proteins\n(Follow-up vs Baseline by treatment)"
+  )
+
+p_venn
+
+ggsave(
+  "../plots/pdf/overlap/venn_fu_baseline_treatments.pdf",
+  plot   = p_venn,
+  width  = 8,
+  height = 8
+)
+
+ggsave(
+  "../plots/png/overlap/venn_fu_baseline_treatments.png",
+  plot   = p_venn,
+  width  = 8,
+  height = 8,
+  dpi    = 300
+)
+```
+
+```{r}
+library(dplyr)
+library(tibble)
+library(writexl)
+
+# --------------------------------------------------
+# Print all overlap categories
+# --------------------------------------------------
+
+insti_ab <- venn_sets[["INSTI + Abacavir"]]
+insti_te <- venn_sets[["INSTI + Tenofovir"]]
+nnrti_te <- venn_sets[["NNRTI + Tenofovir"]]
+
+overlap_all_three <- Reduce(intersect, venn_sets)
+
+overlap_insti_ab_insti_te_only <- setdiff(
+  intersect(insti_ab, insti_te),
+  nnrti_te
+)
+
+overlap_insti_ab_nnrti_te_only <- setdiff(
+  intersect(insti_ab, nnrti_te),
+  insti_te
+)
+
+overlap_insti_te_nnrti_te_only <- setdiff(
+  intersect(insti_te, nnrti_te),
+  insti_ab
+)
+
+insti_ab_only <- setdiff(
+  insti_ab,
+  union(insti_te, nnrti_te)
+)
+
+insti_te_only <- setdiff(
+  insti_te,
+  union(insti_ab, nnrti_te)
+)
+
+nnrti_te_only <- setdiff(
+  nnrti_te,
+  union(insti_ab, insti_te)
+)
+
+# --------------------------------------------------
+# Print counts
+# --------------------------------------------------
+
+overlap_counts <- tibble(
+  Overlap = c(
+    "INSTI + Abacavir only",
+    "INSTI + Tenofovir only",
+    "NNRTI + Tenofovir only",
+    "INSTI + Abacavir ∩ INSTI + Tenofovir only",
+    "INSTI + Abacavir ∩ NNRTI + Tenofovir only",
+    "INSTI + Tenofovir ∩ NNRTI + Tenofovir only",
+    "All three"
+  ),
+  n = c(
+    length(insti_ab_only),
+    length(insti_te_only),
+    length(nnrti_te_only),
+    length(overlap_insti_ab_insti_te_only),
+    length(overlap_insti_ab_nnrti_te_only),
+    length(overlap_insti_te_nnrti_te_only),
+    length(overlap_all_three)
+  )
+)
+
+overlap_counts
+
+# --------------------------------------------------
+# Print protein names
+# --------------------------------------------------
+
+overlap_list <- list(
+  "INSTI + Abacavir only" = insti_ab_only,
+  "INSTI + Tenofovir only" = insti_te_only,
+  "NNRTI + Tenofovir only" = nnrti_te_only,
+  "INSTI + Abacavir and INSTI + Tenofovir only" = overlap_insti_ab_insti_te_only,
+  "INSTI + Abacavir and NNRTI + Tenofovir only" = overlap_insti_ab_nnrti_te_only,
+  "INSTI + Tenofovir and NNRTI + Tenofovir only" = overlap_insti_te_nnrti_te_only,
+  "All three" = overlap_all_three
+)
+
+overlap_list
+```
+```{r}
+overlap_excel <- lapply(overlap_list, function(x) {
+  tibble(Feature = x)
+})
+
+write_xlsx(
+  c(
+    list("Counts" = overlap_counts),
+    overlap_excel
+  ),
+  "../tables/overlap/venn_fu_baseline_treatments_overlaps.xlsx"
+)
+```
+
+### Alternative
+
+```{r}
+library(dplyr)
+library(eulerr)
+
+# --------------------------------------------------
+# 1. Define sets
+# --------------------------------------------------
+
+venn_sets <- list(
+  "INSTI + Abacavir" =
+    res_instiaa_fu_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature),
+
+  "INSTI + Tenofovir" =
+    res_instite_fu_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature),
+
+  "NNRTI + Tenofovir" =
+    res_nnrtite_fu_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature)
+)
+
+venn_sets <- lapply(venn_sets, unique)
+
+# Sanity check
+sapply(venn_sets, length)
+
+# --------------------------------------------------
+# 2. Fit Euler/Venn diagram
+# --------------------------------------------------
+
+venn_fit <- euler(venn_sets)
+
+venn_colors <- c("#4B988F", "#C89A1B", "#EABBBB")
+
+# --------------------------------------------------
+# 3. Save as PDF
+# --------------------------------------------------
+
+dir.create("../plots/pdf/overlap", recursive = TRUE, showWarnings = FALSE)
+
+pdf(
+  "../plots/pdf/overlap/venn_fu_baseline_treatments.pdf",
+  width = 10,
+  height = 7
+)
+
+plot(
+  venn_fit,
+  fills = list(
+    fill = venn_colors,
+    alpha = 0.6
+  ),
+  edges = list(
+    col = "black",
+    lwd = 1
+  ),
+  labels = list(
+    fontsize = 14
+  ),
+  quantities = list(
+    fontsize = 13
+  )
+)
+
+dev.off()
+
+# --------------------------------------------------
+# 4. Save as PNG
+# --------------------------------------------------
+
+dir.create("../plots/png/overlap", recursive = TRUE, showWarnings = FALSE)
+
+png(
+  "../plots/png/overlap/venn_fu_baseline_treatments.png",
+  width = 10,
+  height = 7,
+  units = "in",
+  res = 300
+)
+
+plot(
+  venn_fit,
+  fills = list(
+    fill = venn_colors,
+    alpha = 0.6
+  ),
+  edges = list(
+    col = "black",
+    lwd = 1
+  ),
+  labels = list(
+    fontsize = 14
+  ),
+  quantities = list(
+    fontsize = 13
+  )
+)
+
+dev.off()
+```
+
+## Figure 5H
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% c("INSTI + Abacavir", "INSTI + Tenofovir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "INSTI + Abacavir" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "INSTI + Abacavir (follow-up) vs. INSTI + Tenofovir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instiaa_fu_instite <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_instite <- p
+
+ggsave(
+  filename = "Volcano plot insti ab fu te.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti av fu te.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5I
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% c("INSTI + Abacavir", "NNRTI + Tenofovir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "INSTI + Abacavir" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "INSTI + Abacavir (follow-up) vs. NNRTI + Tenofovir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instiaa_fu_nnrtite <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_nnrtite <- p
+
+ggsave(
+  filename = "Volcano plot insti ab fu nnrtite.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti av fu nnrtite.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5J
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% c("INSTI + Tenofovir", "NNRTI + Tenofovir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "INSTI + Tenofovir" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "INSTI + Tenofovir (follow-up) vs. NNRTI + Tenofovir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instite_fu_nnrtite <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instite_fu_nnrtite <- p
+
+ggsave(
+  filename = "Volcano plot insti te fu nnrtite.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti te fu nnrtite.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 5K
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "CPA2", "GSTA1", "ACY1", "DCXR", "ADH4", "RBP2"
+)
+
+# ---------------------------
+# Treatments of interest
+# ---------------------------
+treatment_order <- c(
+  "NNRTI + Tenofovir",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir"
+)
+
+# ---------------------------
+# Colors (cohort-level)
+# ---------------------------
+group_colors <- c(
+  "NNRTI + Tenofovir"  = "#D55E00",
+  "INSTI + Tenofovir"  = "#0072B2",
+  "INSTI + Abacavir"   = "#CC79A7",
+  "Healthy"            = "#71BF6E",
+  "Cardiovascular"     = "#FC8D62",
+  "Metabolic"          = "#E5C494",
+  "Elite controller"   = "#009E73"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  select(DAid, Feature, NPX) |>
+  inner_join(
+    metadata,
+    by = "DAid"
+  ) |>
+  filter(
+    Feature %in% highlighted_proteins,
+    Treatment %in% treatment_order |
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite controller"
+      )
+  ) |>
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subgroup == "Healthy"          ~ "Healthy",
+      Subgroup == "Cardiovascular"   ~ "Cardiovascular",
+      Subgroup == "Metabolic"        ~ "Metabolic",
+      Subgroup == "Elite controller" ~ "Elite controller",
+      TRUE ~ paste(Treatment, Timepoint, sep = " – ")
+    ),
+
+    # For consistent coloring
+    Group_color = case_when(
+      Subgroup %in% c(
+        "Healthy",
+        "Cardiovascular",
+        "Metabolic",
+        "Elite controller"
+      ) ~ Subgroup,
+      TRUE ~ Treatment
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic",
+  "Elite controller"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Feature, ncol = 2, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Abundance of proteins significantly altered in Tenofovir treatment",
+    x = "Treatment / Reference group",
+    y = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_treatment_selected.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 10,
+  height   = 14
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_treatment_selected.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 10,
+  height   = 14
+)
+```
+
+```{r}
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "RBP2",
+  "CKMT1A_CKMT1B"
+)
+
+# ---------------------------
+# Backbone order
+# ---------------------------
+backbone_order <- c(
+  "TDF",
+  "TAF",
+  "Abacavir"
+)
+
+# ---------------------------
+# Colors
+# ---------------------------
+group_colors <- c(
+  "TDF"            = "#0072B2",
+  "TAF"            = "#56B4E9",
+  "Abacavir"       = "#CC79A7",
+  "Healthy"       = "#71BF6E",
+  "Cardiovascular" = "#FC8D62",
+  "Metabolic"      = "#E5C494"
+)
+
+# ---------------------------
+# Prepare plotting data
+# ---------------------------
+p_up <- data_long |>
+  select(DAid, Feature, NPX) %>%
+  inner_join(
+    metadata,
+    by = "DAid"
+  ) %>%
+  filter(
+    Feature %in% highlighted_proteins,
+    `Specific backbone 2` %in% backbone_order |
+      Subgroup %in% c("Healthy", "Cardiovascular", "Metabolic")
+  ) %>%
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins),
+
+    # -----------------------
+    # X-axis grouping logic
+    # -----------------------
+    Group_time = case_when(
+      Subgroup == "Healthy"       ~ "Healthy",
+      Subgroup == "Cardiovascular" ~ "Cardiovascular",
+      Subgroup == "Metabolic"      ~ "Metabolic",
+      TRUE ~ paste(`Specific backbone 2`, Timepoint, sep = " – ")
+    ),
+
+    # -----------------------
+    # Coloring logic
+    # -----------------------
+    Group_color = case_when(
+      Subgroup %in% c("Healthy", "Cardiovascular", "Metabolic") ~ Subgroup,
+      TRUE ~ `Specific backbone 2`
+    )
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  "TDF – Baseline",
+  "TDF – Follow-up",
+  "TAF – Baseline",
+  "TAF – Follow-up",
+  "Abacavir – Baseline",
+  "Abacavir – Follow-up",
+  "Healthy",
+  "Cardiovascular",
+  "Metabolic"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(
+    x     = Group_time,
+    y     = NPX,
+    group = Group_time
+  )
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Feature, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Differential proteins TDF vs. TAF",
+    x = "Specific backbone 2 / Reference group",
+    y = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_selected_proteins_by_2nd_backbone.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 5,
+  height   = 12
+)
+
+ggsave(
+  filename = "boxplot_selected_proteins_by_2nd_backbone.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 5,
+  height   = 12
+)
+```
+
+## Figure 5L
+
+```{r}
+input_metadata <- metadata |>
+  filter(`Specific backbone 2` %in% c("TDF", "TAF") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`Specific backbone 2` == "TDF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "TDF (follow-up) vs. TAF (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_tdf_fu_taf <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_tdf_fu_taf <- p
+
+ggsave(
+  filename = "Volcano plot tdf fu taf.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot tdf fu taf.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+
+# RBP2 is connected to TDF, makes sense, it is affecting the visuals
+# CKMT1A as well
+```
+
+## Figure 5M
+
+```{r}
+input_metadata <- metadata |>
+  filter(`Specific backbone 2` %in% c("TDF", "Abacavir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`Specific backbone 2` == "TDF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "TDF (follow-up) vs. Abacavir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_tdf_fu_abacavir <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_tdf_fu_abacavir <- p
+
+ggsave(
+  filename = "Volcano plot tdf fu abacavir.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot tdf fu abacavir.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Alternative (TDF + TAF) vs. Abacavir
+
+```{r}
+input_metadata <- metadata |>
+  filter(`Specific backbone 2` %in% c("TDF", "TAF", "Abacavir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`Specific backbone 2` %in% c("TDF", "TAF") ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Tenofovir (follow-up) vs. Abacavir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_te_fu_abacavir <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_te_fu_abacavir <- p
+
+ggsave(
+  filename = "Volcano plot te fu abacavir.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot te fu abacavir.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+```{r}
+metadata |>
+  filter(Disease == "HIV") |>
+  select(DAid, ID, Subgroup, Timepoint, `BMI (baseline)`, `BMI (follow-up)`)
+```
+
+
+## Figure 5N
+
+```{r}
+input_metadata <- metadata |>
+  filter(`Specific backbone 2` %in% c("TAF", "Abacavir") & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(`Specific backbone 2` == "TAF" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "TAF (follow-up) vs. Abacavir (follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_taf_fu_abacavir <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_taf_fu_abacavir <- p
+
+ggsave(
+  filename = "Volcano plot taf fu abacavir.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot taf fu abacavir.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+### Alternative
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(igraph)
+library(ggraph)
+library(ggplot2)
+library(tibble)
+library(stringr)
+
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+# --------------------------------------------------
+# 2. Put all DE result dataframes into a named list
+# --------------------------------------------------
+
+de_list <- list(
+  "INSTI + Abacavir vs INSTI + Tenofovir" =
+    res_instiaa_fu_instite,
+
+  "INSTI + Abacavir vs NNRTI + Tenofovir" =
+    res_instiaa_fu_nnrtite,
+
+  "INSTI + Tenofovir vs NNRTI + Tenofovir" =
+    res_instite_fu_nnrtite,
+
+  "TDF vs TAF" =
+    res_tdf_fu_taf,
+
+  "TDF vs Abacavir" =
+    res_tdf_fu_abacavir
+)
+
+# --------------------------------------------------
+# 3. Convert DE results to long edge table
+# --------------------------------------------------
+
+cnet_edges <- imap_dfr(de_list, function(df, comparison_name) {
+
+  df |>
+    filter(
+      adj.P.Val < fdr_cutoff,
+      abs(logFC) > logfc_cutoff
+    ) |>
+    mutate(
+      Comparison = comparison_name,
+      Direction = case_when(
+        logFC > 0 ~ "Increased",
+        logFC < 0 ~ "Decreased"
+      ),
+      abs_logFC = abs(logFC)
+    ) |>
+    select(
+      Comparison,
+      Feature,
+      logFC,
+      abs_logFC,
+      P.Value,
+      adj.P.Val,
+      Direction
+    )
+})
+
+# Check number of significant protein-comparison links
+cnet_edges |> count(Comparison, Direction)
+
+# --------------------------------------------------
+# 4. Create nodes
+# --------------------------------------------------
+
+comparison_nodes <- tibble(
+  name = names(de_list),
+  type = "Comparison"
+)
+
+protein_nodes <- cnet_edges |>
+  count(Feature, name = "n_comparisons") |>
+  transmute(
+    name = Feature,
+    type = "Protein",
+    n_comparisons = n_comparisons
+  )
+
+nodes <- bind_rows(
+  comparison_nodes,
+  protein_nodes
+) |>
+  mutate(
+    n_comparisons = ifelse(is.na(n_comparisons), 1, n_comparisons)
+  )
+
+# --------------------------------------------------
+# 5. Create graph object
+# --------------------------------------------------
+
+graph_edges <- cnet_edges |>
+  transmute(
+    from = Comparison,
+    to   = Feature,
+    logFC,
+    abs_logFC,
+    adj.P.Val,
+    Direction
+  )
+
+g <- graph_from_data_frame(
+  d = graph_edges,
+  vertices = nodes,
+  directed = FALSE
+)
+
+# --------------------------------------------------
+# 6. Plot cnet-style network
+# --------------------------------------------------
+
+p_cnet <- ggraph(g, layout = "fr") +
+
+  geom_edge_link(
+    aes(
+      color = Direction,
+      width = abs_logFC
+    ),
+    alpha = 0.65
+  ) +
+
+  geom_node_point(
+    aes(
+      shape = type,
+      size = ifelse(type == "Protein", n_comparisons, 5)
+    ),
+    color = "black",
+    fill = "white",
+    stroke = 0.8
+  ) +
+
+  geom_node_text(
+    aes(label = name),
+    repel = TRUE,
+    size = 3.5,
+    max.overlaps = Inf
+  ) +
+
+  scale_edge_color_manual(
+    values = c(
+      "Increased" = "#C03830",
+      "Decreased" = "#317EC2"
+    )
+  ) +
+
+  scale_edge_width(
+    range = c(0.4, 2.2),
+    name = "|logFC|"
+  ) +
+
+  scale_shape_manual(
+    values = c(
+      "Comparison" = 22,
+      "Protein" = 21
+    )
+  ) +
+
+  scale_size_continuous(
+    range = c(3, 8),
+    name = "Number of comparisons"
+  ) +
+
+  labs(
+    edge_color = "Direction",
+    shape = NULL
+  ) +
+
+  theme_void() +
+  theme(
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 16,
+      face = "bold"
+    ),
+    legend.position = "right"
+  )
+
+p_cnet
+
+dir.create("../plots/pdf/network", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/network", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/network/cnet_treatment_comparisons.pdf",
+  p_cnet,
+  width = 8,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/network/cnet_treatment_comparisons.png",
+  p_cnet,
+  width = 8,
+  height = 7,
+  dpi = 300
+)
+```
+
+### Heatmap version
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+# --------------------------------------------------
+# 2. DE list
+# --------------------------------------------------
+
+de_list <- list(
+  "INSTI + Abacavir vs INSTI + Tenofovir" =
+    res_instiaa_fu_instite,
+
+  "INSTI + Abacavir vs NNRTI + Tenofovir" =
+    res_instiaa_fu_nnrtite,
+
+  "INSTI + Tenofovir vs NNRTI + Tenofovir" =
+    res_instite_fu_nnrtite,
+  
+  "Tenofovir (TDF + TAF) vs Abacavir" =
+    res_te_fu_abacavir,
+
+  "TDF vs TAF" =
+    res_tdf_fu_taf,
+
+  "TDF vs Abacavir" =
+    res_tdf_fu_abacavir
+)
+
+# --------------------------------------------------
+# 3. Combine all DE results
+# --------------------------------------------------
+
+df_all <- imap_dfr(de_list, function(df, comparison_name) {
+  
+  df |>
+    mutate(Comparison = comparison_name) |>
+    select(Comparison, Feature, logFC, adj.P.Val)
+})
+
+# --------------------------------------------------
+# 4. Keep ONLY significant proteins (per comparison)
+# --------------------------------------------------
+
+df_sig <- df_all |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff)
+
+# --------------------------------------------------
+# 5. Get union of significant proteins
+# --------------------------------------------------
+
+sig_features <- unique(df_sig$Feature)
+
+# --------------------------------------------------
+# 6. Create full matrix (important for consistent layout)
+# --------------------------------------------------
+
+df_plot <- df_all |>
+  filter(Feature %in% sig_features) |>
+  mutate(
+    logFC_plot = ifelse(
+      adj.P.Val < fdr_cutoff & abs(logFC) > logfc_cutoff,
+      logFC,
+      NA
+    ),
+    size_plot = ifelse(
+      adj.P.Val < fdr_cutoff,
+      -log10(adj.P.Val),
+      NA
+    )
+  )
+
+# --------------------------------------------------
+# 7. Order proteins (by strongest signal)
+# --------------------------------------------------
+
+feature_order <- df_plot |>
+  group_by(Feature) |>
+  summarise(max_fc = max(abs(logFC_plot), na.rm = TRUE)) |>
+  arrange(desc(max_fc)) |>
+  pull(Feature)
+
+df_plot <- df_plot |>
+  mutate(Feature = factor(Feature, levels = feature_order))
+
+# --------------------------------------------------
+# 8. Bubble plot
+# --------------------------------------------------
+
+p_bubble <- ggplot(
+  df_plot,
+  aes(
+    x = Comparison,
+    y = Feature
+  )
+) +
+  
+  geom_point(
+    aes(
+      size = size_plot,
+      fill = logFC_plot
+    ),
+    shape = 21,
+    color = "black",
+    stroke = 0.3,
+    na.rm = TRUE
+  ) +
+  
+  scale_fill_gradient2(
+    low = "#317EC2",
+    mid = "white",
+    high = "#C03830",
+    midpoint = 0,
+    name = "logFC"
+  ) +
+  
+  scale_size_continuous(
+    name = expression(-log[10]("adj.P.Val")),
+    range = c(2, 8)
+  ) +
+  
+  labs(
+    title = "Differential proteins across treatment comparisons (at follow-up)",
+    x = "Comparison",
+    y = "Protein"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+p_bubble
+
+# --------------------------------------------------
+# 9. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bubble", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bubble", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bubble/treatment_comparison_bubble.pdf",
+  p_bubble,
+  width = 10,
+  height = 10
+)
+
+ggsave(
+  "../plots/png/bubble/treatment_comparison_bubble.png",
+  p_bubble,
+  width = 10,
+  height = 10,
+  dpi = 300
+)
+```
+
+
+## Combine volcano plots
+
+```{r}
+p_volcano_tdf_fu_taf + ggtitle("TDF vs. TAF") + theme(legend.position = "none") +
+  p_volcano_tdf_fu_abacavir + ggtitle("TDF vs. Abacavir") + theme(legend.position = "none") +
+  p_volcano_taf_fu_abacavir + ggtitle("TAF vs. Abacavir") + theme(legend.position = "none") +
+  plot_layout(ncol = 3)
+
+ggsave(
+  filename = "Volcano plots Treatment Specific backbone 2.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 20,
+  height = 7) 
+```
+
+## Figure 5O
 
 ```{r}
 
@@ -83,22 +2363,789 @@ data_wide <- read_csv("../data/data_wide.csv")
 
 # Save plots
 
-## Figure 3
+## Figure 5
 
 ```{r}
 
 ```
 
-## Supplementary Figure 3
+### Combining
 
 ```{r}
+p_volcano_instiaa_fu_baseline + ggtitle("INSTI + Abacavir") + 
+  p_volcano_instite_fu_baseline + ggtitle("INSTI + Tenofovir") +
+  p_volcano_nnrtite_fu_baseline + ggtitle("NNRTI + Tenofovir") + 
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
 
+ggsave(
+  filename = "Volcano plots Treatment FU Baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 20,
+  height = 7) 
 ```
+
+
+## Supplementary Figure 14
+
+### Figure S14A
+
+```{r}
+# 1. Define ART category levels
+art_levels <- c("Untreated", "INSTI", "NNRTI", "PI", "Other treatment")
+
+# 2. Summarize ART status per Subgroup
+art_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  # If ART is NA and not Elite controller, label as "Untreated"
+  mutate(
+    ART = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      is.na(ART)                       ~ "Other treatment",
+      TRUE                             ~ ART
+    )
+  ) %>%
+  mutate(status = factor(ART, levels = art_levels)) %>%
+  count(Subgroup, status)
+
+# 3. Stacked barplot: Subgroup on x, counts on y, fill by ART status
+ggplot(art_summary, aes(x = Subgroup, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 5) +
+  scale_fill_manual(
+    values = c("INSTI"     = "#E78AC3",
+               "Untreated" = "#E5C494",
+               "NNRTI"     = "#A6D854",
+               "PI"        = "#66C2A5",
+               "Other treatment" = "#FFD92F")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Number of individuals") +
+  labs(
+    title = "ART Status by Subgroup",
+    x     = "Subgroup",
+    fill  = "ART status"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  theme(legend.position = "right")
+
+ggsave("../plots/pdf/bar/stacked_bar_ART_status.pdf", width  = 12, height = 7)
+ggsave("../plots/png/bar/stacked_bar_ART_status.png", width  = 12, height = 7)
+```
+
+### Figure S14B
+
+```{r}
+# 1. Define backbone levels (optional ordering)
+backbone_levels <- c("Untreated", "Tenofovir", "Abacavir", "Other treatment")
+
+# 2. Summarize Backbone 2 by Subgroup
+backbone_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    `Backbone 2` = ifelse(is.na(`Backbone 2`), "Other", `Backbone 2`),
+    backbone_group = factor(`Backbone 2`, levels = backbone_levels)
+  ) %>%
+  # If Backbone 2 is NA and not Elite controller, label as "Other treatment"
+  mutate(
+    backbone_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      is.na(`Backbone 2`)               ~ "Other treatment",
+      TRUE                             ~ as.character(backbone_group)
+    )
+  ) |>
+  # If NA then Other treatment
+  mutate(
+    backbone_group = replace_na(backbone_group, "Other treatment")
+  ) %>%
+  count(Subgroup, backbone_group)
+
+# 3. Stacked barplot: Subgroup on x, counts on y, fill by backbone_group
+ggplot(backbone_summary, aes(x = Subgroup, y = n, fill = backbone_group)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.5),
+            color    = "black",
+            size     = 5) +
+  scale_fill_manual(
+    values = c("Tenofovir" = "#80B1D3",
+               "Abacavir"   = "#FDB462",
+               "Other treatment"      = "#FFD92F",
+               "Untreated"  = "#E5C494")
+  ) +
+  scale_y_continuous(expand = expansion(add = c(0, 0)),
+                     name   = "Number of individuals") +
+  labs(
+    title = "Backbone 2 by Subgroup",
+    x     = "Subgroup",
+    fill  = "Backbone"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.text.x     = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  ) +
+  coord_flip() +
+  theme_hiv()  +
+  theme(legend.position = "right")
+
+ggsave("../plots/pdf/bar/stacked_bar_backbone2.pdf", width  = 12, height = 7)
+ggsave("../plots/png/bar/stacked_bar_backbone2.png", width  = 12, height = 7)
+```
+
+### Figure S14C
+
+```{r}
+# --------------------------------------------------
+# 1. Define levels
+# --------------------------------------------------
+
+backbone_levels <- c(
+  "Untreated",
+  "TDF",
+  "TAF",
+  "Abacavir",
+  "Other treatment"
+)
+
+subgroup_levels <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite controller"
+)
+
+# --------------------------------------------------
+# 2. Summarize Specific backbone 2 by Subgroup
+# --------------------------------------------------
+
+backbone_summary <- metadata |>
+  filter(Disease == "HIV") |>
+  distinct(ID, .keep_all = TRUE) |>
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+
+    backbone_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      `Specific backbone 2` %in% c("TDF", "TAF", "Abacavir") ~ `Specific backbone 2`,
+      TRUE ~ "Other treatment"
+    ),
+
+    backbone_group = factor(backbone_group, levels = backbone_levels)
+  ) |>
+  count(Subgroup, backbone_group, .drop = FALSE)
+
+# --------------------------------------------------
+# 3. Plot
+# --------------------------------------------------
+
+p_backbone <- ggplot(
+  backbone_summary,
+  aes(x = Subgroup, y = n, fill = backbone_group)
+) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = ifelse(n > 0, n, "")),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Untreated"       = "#E5C494",
+      "TDF"             = "#80B1D3",
+      "TAF"             = "#4F8FC0",
+      "Abacavir"        = "#FDB462",
+      "Other treatment" = "#FFD92F"
+    ),
+    drop = FALSE
+  ) +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Specific backbone 2 by Subgroup",
+    x = "Subgroup",
+    fill = "Backbone"
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  theme(
+    legend.position = "right"
+  )
+
+p_backbone
+
+# --------------------------------------------------
+# 4. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bar", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bar", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bar/stacked_bar_specific_backbone2.pdf",
+  p_backbone,
+  width = 12,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/bar/stacked_bar_specific_backbone2.png",
+  p_backbone,
+  width = 12,
+  height = 7,
+  dpi = 300
+)
+```
+
+### Figure S14D
+
+```{r}
+# --------------------------------------------------
+# 1. Define levels
+# --------------------------------------------------
+
+treatment_levels <- c(
+  "Untreated",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir",
+  "NNRTI + Tenofovir",
+  "PI",
+  "Other treatment"
+)
+
+subgroup_levels <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Elite controller"
+)
+
+# --------------------------------------------------
+# 2. Summarize Treatment by Subgroup
+# --------------------------------------------------
+
+treatment_summary <- metadata |>
+  filter(Disease == "HIV") |>
+  distinct(ID, .keep_all = TRUE) |>
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+
+    treatment_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      Treatment %in% treatment_levels ~ Treatment,
+      TRUE ~ "Other treatment"
+    ),
+
+    treatment_group = factor(treatment_group, levels = treatment_levels)
+  ) |>
+  count(Subgroup, treatment_group, .drop = FALSE)
+
+# --------------------------------------------------
+# 3. Plot
+# --------------------------------------------------
+
+p_treatment <- ggplot(
+  treatment_summary,
+  aes(x = Subgroup, y = n, fill = treatment_group)
+) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(
+    aes(label = ifelse(n > 0, n, "")),
+    position = position_stack(vjust = 0.5),
+    color = "black",
+    size = 5
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Untreated"            = "#E5C494",
+      "INSTI + Tenofovir"    = "#80B1D3",
+      "INSTI + Abacavir"     = "#FDB462",
+      "NNRTI + Tenofovir"    = "#B3DE69",
+      "PI"                   = "#FB8072",
+      "Other treatment"      = "#FFD92F"
+    ),
+    drop = FALSE
+  ) +
+  scale_y_continuous(
+    expand = expansion(add = c(0, 0)),
+    name = "Number of individuals"
+  ) +
+  labs(
+    title = "Treatment by Subgroup",
+    x = "Subgroup",
+    fill = "Treatment"
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  theme(
+    legend.position = "right"
+  )
+
+p_treatment
+
+# --------------------------------------------------
+# 4. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bar", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bar", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bar/stacked_bar_treatment.pdf",
+  p_treatment,
+  width = 12,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/bar/stacked_bar_treatment.png",
+  p_treatment,
+  width = 12,
+  height = 7,
+  dpi = 300
+)
+```
+
+### Combining S14A-S14D
+
+```{r}
+# --------------------------------------------------
+# 1. Define consistent subgroup order
+# --------------------------------------------------
+
+subgroup_levels <- c(
+  "Elite controller",
+  "More preserved immunity",
+  "Severely impaired immunity",
+  "Primary HIV infection"
+)
+
+# --------------------------------------------------
+# 2. ART STATUS
+# --------------------------------------------------
+
+art_levels <- c("Untreated", "INSTI", "NNRTI", "PI", "Other treatment")
+
+art_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    ART = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      is.na(ART) ~ "Other treatment",
+      TRUE ~ ART
+    ),
+    status = factor(ART, levels = art_levels)
+  ) %>%
+  count(Subgroup, status, .drop = FALSE)
+
+p_art <- ggplot(art_summary, aes(x = Subgroup, y = n, fill = status)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = ifelse(n > 0, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  scale_fill_manual(values = c(
+    "INSTI" = "#E78AC3",
+    "Untreated" = "#E5C494",
+    "NNRTI" = "#A6D854",
+    "PI" = "#FB8072",
+    "Other treatment" = "#FFD92F"
+  )) +
+  coord_flip() +
+  labs(title = "ART status", x = NULL, y = "Count", fill = NULL) +
+  theme_hiv()
+
+# --------------------------------------------------
+# 3. BACKBONE
+# --------------------------------------------------
+
+backbone_levels <- c("Untreated", "Tenofovir", "Abacavir", "Other treatment")
+
+backbone_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    backbone_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      is.na(`Backbone 2`) ~ "Other treatment",
+      TRUE ~ `Backbone 2`
+    ),
+    backbone_group = factor(backbone_group, levels = backbone_levels)
+  ) %>%
+  count(Subgroup, backbone_group, .drop = FALSE)
+
+p_backbone <- ggplot(backbone_summary, aes(x = Subgroup, y = n, fill = backbone_group)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = ifelse(n > 0, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  scale_fill_manual(values = c(
+    "Tenofovir" = "#80B1D3",
+    "Abacavir" = "#FDB462",
+    "Other treatment" = "#FFD92F",
+    "Untreated" = "#E5C494"
+  )) +
+  coord_flip() +
+  labs(title = "Backbone 2", x = NULL, y = "Count", fill = NULL) +
+  theme_hiv()
+
+# --------------------------------------------------
+# 4. SPECIFIC BACKBONE
+# --------------------------------------------------
+
+specific_levels <- c("Untreated", "TDF", "TAF", "Abacavir", "Other treatment")
+
+specific_summary <- metadata |>
+  filter(Disease == "HIV") |>
+  distinct(ID, .keep_all = TRUE) |>
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    backbone_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      `Specific backbone 2` %in% c("TDF", "TAF", "Abacavir") ~ `Specific backbone 2`,
+      TRUE ~ "Other treatment"
+    ),
+    backbone_group = factor(backbone_group, levels = specific_levels)
+  ) |>
+  count(Subgroup, backbone_group, .drop = FALSE)
+
+p_specific <- ggplot(specific_summary, aes(x = Subgroup, y = n, fill = backbone_group)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = ifelse(n > 0, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  scale_fill_manual(values = c(
+    "Untreated" = "#E5C494",
+    "TDF" = "#80B1D3",
+    "TAF" = "#4F8FC0",
+    "Abacavir" = "#FDB462",
+    "Other treatment" = "#FFD92F"
+  )) +
+  coord_flip() +
+  labs(title = "Specific backbone", x = NULL, y = "Count", fill = NULL) +
+  theme_hiv()
+
+# --------------------------------------------------
+# 5. TREATMENT
+# --------------------------------------------------
+
+treatment_levels <- c(
+  "Untreated",
+  "INSTI + Tenofovir",
+  "INSTI + Abacavir",
+  "NNRTI + Tenofovir",
+  "PI",
+  "Other treatment"
+)
+
+treatment_summary <- metadata |>
+  filter(Disease == "HIV") |>
+  distinct(ID, .keep_all = TRUE) |>
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    treatment_group = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      Treatment %in% treatment_levels ~ Treatment,
+      TRUE ~ "Other treatment"
+    ),
+    treatment_group = factor(treatment_group, levels = treatment_levels)
+  ) |>
+  count(Subgroup, treatment_group, .drop = FALSE)
+
+p_treatment <- ggplot(treatment_summary, aes(x = Subgroup, y = n, fill = treatment_group)) +
+  geom_col(color = "white", width = 0.7) +
+  geom_text(aes(label = ifelse(n > 0, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  scale_fill_manual(values = c(
+    "Untreated" = "#E5C494",
+    "INSTI + Tenofovir" = "#80B1D3",
+    "INSTI + Abacavir" = "#FDB462",
+    "NNRTI + Tenofovir" = "#B3DE69",
+    "PI" = "#FB8072",
+    "Other treatment" = "#FFD92F"
+  )) +
+  coord_flip() +
+  labs(title = "Treatment", x = NULL, y = "Count", fill = NULL) +
+  theme_hiv()
+
+# --------------------------------------------------
+# 6. COMBINE WITH PATCHWORK
+# --------------------------------------------------
+
+final_plot <-
+  (p_art | p_backbone) /
+  (p_specific | p_treatment) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "right")
+
+final_plot
+
+# --------------------------------------------------
+# 7. SAVE
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bar", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bar", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bar/combined_treatment_overview.pdf",
+  final_plot,
+  width = 16,
+  height = 10
+)
+
+ggsave(
+  "../plots/png/bar/combined_treatment_overview.png",
+  final_plot,
+  width = 16,
+  height = 10,
+  dpi = 300
+)
+```
+
+#### Alternative
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+# --------------------------------------------------
+# 1. Subgroup order
+# --------------------------------------------------
+
+subgroup_levels <- c(
+  "Primary HIV-1 infection",
+  "Severely impaired immunity",
+  "More preserved immunity",
+  "Elite controller"
+)
+
+# --------------------------------------------------
+# COMMON THEME (🔥 key improvement)
+# --------------------------------------------------
+
+theme_panel <- function(title_text) {
+  theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.y = element_line(color = "grey85"),
+      panel.grid.major.x = element_line(color = "grey90"),
+      panel.grid.minor = element_blank(),
+      axis.title = element_blank(),
+      plot.title = element_blank(),
+
+      strip.background = element_rect(fill = "grey85", color = NA),
+      strip.text = element_text(face = "bold"),
+
+      legend.position = "right"
+    )
+}
+
+# --------------------------------------------------
+# GENERIC FUNCTION (🔥 avoids repetition)
+# --------------------------------------------------
+
+make_plot <- function(df, fill_var, fill_colors, strip_title) {
+  
+  ggplot(df, aes(x = Subgroup, y = n, fill = .data[[fill_var]])) +
+    
+    geom_col(
+      color = "white",
+      width = 0.6   # 🔥 thinner bars
+    ) +
+    
+    geom_text(
+      aes(label = ifelse(n > 0, n, "")),
+      position = position_stack(vjust = 0.5),
+      size = 3.5
+    ) +
+    
+    coord_flip() +
+    
+    scale_fill_manual(values = fill_colors) +
+    
+    facet_wrap(~1, labeller = labeller(. = strip_title)) +
+    
+    labs(y = "Count") +
+    
+    theme_panel()
+}
+
+# --------------------------------------------------
+# 2. ART STATUS (A)
+# --------------------------------------------------
+
+art_levels <- c("Untreated", "INSTI", "NNRTI", "PI")
+
+art_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    ART = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      TRUE ~ ART
+    ),
+    ART = factor(ART, levels = art_levels)
+  ) %>%
+  count(Subgroup, ART, .drop = FALSE)
+
+p_art <- make_plot(
+  art_summary,
+  "ART",
+  c(
+    "Untreated" = "#E5C494",
+    "INSTI" = "#CC79A7",
+    "NNRTI" = "#7CAE00",
+    "PI" = "#F8766D"
+  ),
+  strip_title = function(x) "ART status"
+)
+
+# --------------------------------------------------
+# 3. BACKBONE 2 (B)
+# --------------------------------------------------
+
+backbone_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    backbone = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      TRUE ~ `Backbone 2`
+    )
+  ) %>%
+  count(Subgroup, backbone, .drop = FALSE)
+
+p_backbone <- make_plot(
+  backbone_summary,
+  "backbone",
+  c(
+    "Untreated" = "#E5C494",
+    "Tenofovir" = "#80B1D3",
+    "Abacavir" = "#FDB462"
+  ),
+  strip_title = function(x) "2nd Backbone"
+)
+
+# --------------------------------------------------
+# 4. SPECIFIC BACKBONE (C)
+# --------------------------------------------------
+
+specific_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    backbone = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      TRUE ~ `Specific backbone 2`
+    )
+  ) %>%
+  count(Subgroup, backbone, .drop = FALSE)
+
+p_specific <- make_plot(
+  specific_summary,
+  "backbone",
+  c(
+    "Untreated" = "#E5C494",
+    "TDF" = "#80B1D3",
+    "TAF" = "#4F8FC0",
+    "Abacavir" = "#FDB462"
+  ),
+  strip_title = function(x) "Specific backbone"
+)
+
+# --------------------------------------------------
+# 5. TREATMENT (D)
+# --------------------------------------------------
+
+treatment_summary <- metadata %>%
+  filter(Disease == "HIV") %>%
+  distinct(ID, .keep_all = TRUE) %>%
+  mutate(
+    Subgroup = factor(Subgroup, levels = subgroup_levels),
+    treatment = case_when(
+      Subgroup == "Elite controller" ~ "Untreated",
+      TRUE ~ Treatment
+    )
+  ) %>%
+  count(Subgroup, treatment, .drop = FALSE)
+
+p_treatment <- make_plot(
+  treatment_summary,
+  "treatment",
+  c(
+    "Untreated" = "#E5C494",
+    "INSTI + Tenofovir" = "#80B1D3",
+    "INSTI + Abacavir" = "#FDB462",
+    "NNRTI + Tenofovir" = "#B3DE69",
+    "PI" = "#FB8072"
+  ),
+  strip_title = function(x) "Treatment combination"
+)
+
+# --------------------------------------------------
+# 6. COMBINE (🔥 layout matches your figure)
+# --------------------------------------------------
+
+final_plot <-
+  (p_art | p_backbone) /
+  (p_specific | p_treatment) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "right")
+
+final_plot
+
+# --------------------------------------------------
+# 7. SAVE (landscape like your figure)
+# --------------------------------------------------
+
+ggsave(
+  "../plots/pdf/bar/supplementary_figure14_style.pdf",
+  final_plot,
+  width = 14,
+  height = 8
+)
+
+ggsave(
+  "../plots/png/bar/supplementary_figure14_style.png",
+  final_plot,
+  width = 14,
+  height = 8,
+  dpi = 300
+)
+```
+
 
 # Save Tables
 
 ```{r}
-
+res_instiaa_fu_baseline
+res_instite_fu_baseline
+res_nnrtite_fu_baseline
+res_tdf_fu_taf
+res_tdf_fu_abacavir
+res_taf_fu_abacavir
 ```
 
 # SessionInfo
