@@ -30,66 +30,3481 @@ ggplot2::update_geom_defaults(
 
 # Source scripts
 source("../scripts/functions/themes_palettes.R")
+source("../scripts/functions/functions_disease_analyses.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
 
-# Figure 3
+# Figure 6
 
-## Figure 3A
+## Figure 6A
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |> 
+  filter(Disease %in% c("HIV")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Primary HIV infection", "More preserved immunity", "Severely impaired immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at baseline) vs. PLWH (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_baseline_hiv <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_hiv_ba <- p
+
+ggsave(
+  filename = "Volcano plot EC vs HIV baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs HIV baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6B
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |> 
+  filter(Subgroup %in% c("Primary HIV infection", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Primary HIV infection"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at baseline) vs. Primary HIV infection (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_primary_ba <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_primary_ba <- p
+
+ggsave(
+  filename = "Volcano plot EC vs primary baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs primary baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6C
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |> 
+  filter(Subgroup %in% c("Severely impaired immunity", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Severely impaired immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at baseline) vs. Severely impaired immunity (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_impaired_ba <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_impaired_ba <- p
+
+ggsave(
+  filename = "Volcano plot EC vs impaired baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs impaired baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6D
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Disease %in% c("HIV")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Primary HIV infection", "More preserved immunity", "Severely impaired immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at follow-up) vs. PLWH (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_hiv_fu <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_hiv_fu <- p
+
+ggsave(
+  filename = "Volcano plot EC vs HIV fu.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs HIV fu.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6E
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Subgroup %in% c("Primary HIV infection", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Primary HIV infection"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 15,
+                  top_down_prot = 15,
+                  title = "Elite controllers (at follow-up) vs. Primary HIV infection (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_primary_fu <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_primary_fu <- p
+
+ggsave(
+  filename = "Volcano plot EC vs primary fu.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs primary fu.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6F
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Subgroup %in% c("More preserved immunity", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("More preserved immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at follow-up) vs. More preserved immunity (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_preserved_fu <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_preserved_fu <- p
+
+ggsave(
+  filename = "Volcano plot EC vs preserved fu.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs preserved fu.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline") |> 
+  filter(Subgroup %in% c("More preserved immunity", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (baseline)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("More preserved immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at baseline) vs. More preserved immunity (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_preserved_ba <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_preserved_ba <- p
+
+ggsave(
+  filename = "Volcano plot EC vs preserved baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs preserved baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+
+## Figure 6G
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint != "Baseline") |> 
+  filter(Subgroup %in% c("Severely impaired immunity", "Elite controller")) |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Subgroup", 
+                          case = "Elite controller", 
+                          control = c("Severely impaired immunity"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 5,
+                  top_down_prot = 10,
+                  title = "Elite controllers (at follow-up) vs. Severely impaired immunity (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_ec_impaired_fu <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_ec_impaired_fu <- p
+
+ggsave(
+  filename = "Volcano plot EC vs impaired fu.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot EC vs impaired fu.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6I
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Abacavir" & Timepoint == "Follow-up" | Subgroup == "Elite controller" & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "Untreated" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Elite controllers (at follow-up) vs. INSTI + Abacavir (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instiaa_fu_ec <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instiaa_fu_ec <- p
+
+ggsave(
+  filename = "Volcano plot insti fu ec.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti fu ec.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6J
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "INSTI + Tenofovir" & Timepoint == "Follow-up" | Subgroup == "Elite controller" & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "Untreated" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Elite controllers (at follow-up) vs. INSTI + Tenofovir (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_instite_fu_ec <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_instite_fu_ec <- p
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu ec.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot insti tenofovir fu ec.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6K
+
+```{r}
+input_metadata <- metadata |>
+  filter(Treatment %in% "NNRTI + Tenofovir" & Timepoint == "Follow-up" | Subgroup == "Elite controller" & Timepoint == "Follow-up") |>
+  mutate(Age = ifelse(is.na(Age), `Age (follow-up)`, Age)) |>
+  mutate(BMI = ifelse(is.na(BMI), `BMI (follow-up)`, BMI)) |>
+  mutate(ID = as.character(ID)) |>
+  # Mutate Follow-up to FU in Timepoint
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint)) |>
+  mutate(Comparison = case_when(Treatment == "Untreated" ~ "case",
+                                    TRUE ~ "control"))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = "control", 
+                          correct = c("Age", "Sex")
+                          ) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 10,
+                  top_down_prot = 5,
+                  title = "Elite controllers (at follow-up) vs. NNRTI + Tenofovir (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_nnrtite_fu_ec <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_nnrtite_fu_ec <- p
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu ec.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 7,
+  height   = 10)
+
+ggsave(
+  filename = "Volcano plot NNRTI + Tenofovir fu ec.png",
+  path     = "../plots/png/volcano/",
+  width    = 7,
+  height   = 10)
+```
+
+## Figure 6L
 
 ```{r}
 
 ```
 
-## Figure 3B
+### Alternative
 
 ```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(igraph)
+library(ggraph)
+library(ggplot2)
 
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+
+# --------------------------------------------------
+# 2. Put Figure 6 DE results into named list
+# --------------------------------------------------
+
+de_list_fig6 <- list(
+  "EC baseline vs PLWH baseline" =
+    res_ec_baseline_hiv,
+
+  "EC baseline vs PHI baseline" =
+    res_ec_primary_ba,
+
+  "EC baseline vs SII baseline" =
+    res_ec_impaired_ba,
+  
+  "EC baeline vs MPI baseline" =
+    res_ec_preserved_ba,
+
+  "EC follow-up vs PLWH follow-up" =
+    res_ec_hiv_fu,
+
+  "EC follow-up vs PHI follow-up" =
+    res_ec_primary_fu,
+
+  "EC follow-up vs MPI follow-up" =
+    res_ec_preserved_fu,
+
+  "EC follow-up vs SII follow-up" =
+    res_ec_impaired_fu,
+
+  "EC follow-up vs INSTI + Abacavir" =
+    res_instiaa_fu_ec,
+
+  "EC follow-up vs INSTI + Tenofovir" =
+    res_instite_fu_ec,
+
+  "EC follow-up vs NNRTI + Tenofovir" =
+    res_nnrtite_fu_ec
+)
+
+# --------------------------------------------------
+# 3. Create edge table
+# --------------------------------------------------
+
+cnet_edges_fig6 <- imap_dfr(de_list_fig6, function(df, comparison_name) {
+
+  df |>
+    filter(
+      adj.P.Val < fdr_cutoff,
+      abs(logFC) > logfc_cutoff
+    ) |>
+    mutate(
+      Comparison = comparison_name,
+      Direction = case_when(
+        logFC > 0 ~ "Higher in EC",
+        logFC < 0 ~ "Lower in EC"
+      ),
+      abs_logFC = abs(logFC)
+    ) |>
+    select(
+      Comparison,
+      Feature,
+      logFC,
+      abs_logFC,
+      P.Value,
+      adj.P.Val,
+      Direction
+    )
+})
+
+# Sanity check
+cnet_edges_fig6 |> count(Comparison, Direction)
+
+# --------------------------------------------------
+# 4. Optional: keep only proteins significant in >= 2 comparisons
+# --------------------------------------------------
+# Set min_comparisons <- 1 if you want all significant proteins.
+
+min_comparisons <- 1
+
+keep_proteins <- cnet_edges_fig6 |>
+  count(Feature, name = "n_comparisons") |>
+  filter(n_comparisons >= min_comparisons) |>
+  pull(Feature)
+
+cnet_edges_plot <- cnet_edges_fig6 |>
+  filter(Feature %in% keep_proteins)
+
+# --------------------------------------------------
+# 5. Create nodes
+# --------------------------------------------------
+
+comparison_nodes <- tibble(
+  name = names(de_list_fig6),
+  type = "Comparison",
+  n_comparisons = NA_integer_
+)
+
+protein_nodes <- cnet_edges_plot |>
+  count(Feature, name = "n_comparisons") |>
+  transmute(
+    name = Feature,
+    type = "Protein",
+    n_comparisons = n_comparisons
+  )
+
+nodes_fig6 <- bind_rows(
+  comparison_nodes,
+  protein_nodes
+) |>
+  filter(name %in% c(cnet_edges_plot$Comparison, cnet_edges_plot$Feature)) |>
+  mutate(
+    node_size = case_when(
+      type == "Comparison" ~ 6,
+      type == "Protein" ~ 2 + n_comparisons
+    )
+  )
+
+# --------------------------------------------------
+# 6. Build graph
+# --------------------------------------------------
+
+graph_edges_fig6 <- cnet_edges_plot |>
+  transmute(
+    from = Comparison,
+    to = Feature,
+    logFC,
+    abs_logFC,
+    adj.P.Val,
+    Direction
+  )
+
+g_fig6 <- graph_from_data_frame(
+  d = graph_edges_fig6,
+  vertices = nodes_fig6,
+  directed = FALSE
+)
+
+# --------------------------------------------------
+# 7. Plot network
+# --------------------------------------------------
+
+p_cnet_fig6 <- ggraph(g_fig6, layout = "fr") +
+
+  geom_edge_link(
+    aes(
+      color = Direction,
+      width = abs_logFC
+    ),
+    alpha = 0.65
+  ) +
+
+  geom_node_point(
+    aes(
+      shape = type,
+      size = node_size,
+      fill = type
+    ),
+    color = "black",
+    stroke = 0.8
+  ) +
+
+  geom_node_text(
+    aes(label = name),
+    repel = TRUE,
+    size = 3.4,
+    max.overlaps = Inf
+  ) +
+
+  scale_edge_color_manual(
+    values = c(
+      "Higher in EC" = "#C03830",
+      "Lower in EC"  = "#317EC2"
+    )
+  ) +
+
+  scale_fill_manual(
+    values = c(
+      "Comparison" = "white",
+      "Protein" = "grey90"
+    )
+  ) +
+
+  scale_shape_manual(
+    values = c(
+      "Comparison" = 22,
+      "Protein" = 21
+    )
+  ) +
+
+  scale_edge_width(
+    range = c(0.4, 2.3),
+    name = "|logFC|"
+  ) +
+
+  scale_size_continuous(
+    range = c(3, 9),
+    guide = "none"
+  ) +
+
+  labs(
+    title = "Differentially abundant proteins in Elite controller comparisons",
+    edge_color = "Direction",
+    shape = NULL,
+    fill = NULL
+  ) +
+
+  theme_void() +
+  theme(
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 16,
+      face = "bold"
+    ),
+    legend.position = "right"
+  )
+
+p_cnet_fig6
+
+dir.create("../plots/pdf/network", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/network", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/network/cnet_elite_controller_comparisons.pdf",
+  p_cnet_fig6,
+  width = 18,
+  height = 20
+)
+
+ggsave(
+  "../plots/png/network/cnet_elite_controller_comparisons.png",
+  p_cnet_fig6,
+  width = 10,
+  height = 14,
+  dpi = 300
+)
 ```
 
-## Figure 3C
+#### Bubbleplot version
 
 ```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
 
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+min_comparisons <- 1   # change to 2+ if you want stricter filtering
+
+# --------------------------------------------------
+# 2. DE list
+# --------------------------------------------------
+
+de_list_fig6 <- list(
+  "EC vs PLWH (baseline)" = res_ec_baseline_hiv,
+  "EC vs PHI (baseline)"  = res_ec_primary_ba,
+  "EC vs SII (baseline)"  = res_ec_impaired_ba,
+  "EC vs MPI (baseline)"  = res_ec_preserved_ba,
+
+  "EC vs PLWH (follow-up)" = res_ec_hiv_fu,
+  "EC vs PHI (follow-up)"  = res_ec_primary_fu,
+  "EC vs MPI (follow-up)"  = res_ec_preserved_fu,
+  "EC vs SII (follow-up)"  = res_ec_impaired_fu,
+
+  "EC vs INSTI + Abacavir"   = res_instiaa_fu_ec,
+  "EC vs INSTI + Tenofovir"  = res_instite_fu_ec,
+  "EC vs NNRTI + Tenofovir"  = res_nnrtite_fu_ec
+)
+
+# --------------------------------------------------
+# 3. Combine DE results
+# --------------------------------------------------
+
+df_all <- imap_dfr(de_list_fig6, function(df, comparison_name) {
+  df |>
+    mutate(Comparison = comparison_name) |>
+    select(Comparison, Feature, logFC, adj.P.Val)
+})
+
+# --------------------------------------------------
+# 4. Filter significant proteins
+# --------------------------------------------------
+
+df_sig <- df_all |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff)
+
+# Keep proteins appearing in ≥ min_comparisons
+keep_proteins <- df_sig |>
+  count(Feature) |>
+  filter(n >= min_comparisons) |>
+  pull(Feature)
+
+# --------------------------------------------------
+# 5. Prepare plotting dataset
+# --------------------------------------------------
+
+df_plot <- df_all |>
+  filter(Feature %in% keep_proteins) |>
+  mutate(
+    logFC_plot = ifelse(
+      adj.P.Val < fdr_cutoff & abs(logFC) > logfc_cutoff,
+      logFC,
+      NA
+    ),
+    size_plot = ifelse(
+      adj.P.Val < fdr_cutoff,
+      -log10(adj.P.Val),
+      NA
+    )
+  )
+
+# --------------------------------------------------
+# 6. Order proteins (strongest signal first)
+# --------------------------------------------------
+
+feature_order <- df_plot |>
+  group_by(Feature) |>
+  summarise(max_fc = max(abs(logFC_plot), na.rm = TRUE)) |>
+  arrange(desc(max_fc)) |>
+  pull(Feature)
+
+df_plot <- df_plot |>
+  mutate(
+    Feature = factor(Feature, levels = feature_order),
+    Comparison = factor(Comparison, levels = names(de_list_fig6))
+  )
+
+# --------------------------------------------------
+# 7. Plot bubble heatmap
+# --------------------------------------------------
+
+p_bubble_fig6 <- ggplot(
+  df_plot,
+  aes(x = Comparison, y = Feature)
+) +
+  
+  geom_point(
+    aes(
+      size = size_plot,
+      fill = logFC_plot
+    ),
+    shape = 21,
+    color = "black",
+    stroke = 0.3,
+    na.rm = TRUE
+  ) +
+  
+  scale_fill_gradient2(
+    low = "#317EC2",   # lower in EC
+    mid = "white",
+    high = "#C03830",  # higher in EC
+    midpoint = 0,
+    name = "logFC"
+  ) +
+  
+  scale_size_continuous(
+    name = expression(-log[10]("adj.P.Val")),
+    range = c(2, 8)
+  ) +
+  
+  labs(
+    title = "Differentially abundant proteins in Elite controller comparisons",
+    x = "Comparison",
+    y = "Protein"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    legend.position = "right"
+  )
+
+p_bubble_fig6
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bubble", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bubble", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bubble/bubble_elite_controller_comparisons.pdf",
+  p_bubble_fig6,
+  width = 14,
+  height = 30
+)
+
+ggsave(
+  "../plots/png/bubble/bubble_elite_controller_comparisons.png",
+  p_bubble_fig6,
+  width = 14,
+  height = 30,
+  dpi = 300
+)
 ```
 
-## Figure 3D
-
 ```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
 
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+min_comparisons <- 1
+
+# --------------------------------------------------
+# 2. DE list
+# --------------------------------------------------
+
+de_list_fig6 <- list(
+  "EC vs PLWH (baseline)" = res_ec_baseline_hiv,
+  "EC vs PHI (baseline)"  = res_ec_primary_ba,
+  "EC vs SII (baseline)"  = res_ec_impaired_ba,
+  "EC vs MPI (baseline)"  = res_ec_preserved_ba,
+
+  "EC vs PLWH (follow-up)" = res_ec_hiv_fu,
+  "EC vs PHI (follow-up)"  = res_ec_primary_fu,
+  "EC vs MPI (follow-up)"  = res_ec_preserved_fu,
+  "EC vs SII (follow-up)"  = res_ec_impaired_fu,
+
+  "EC vs INSTI + Abacavir"   = res_instiaa_fu_ec,
+  "EC vs INSTI + Tenofovir"  = res_instite_fu_ec,
+  "EC vs NNRTI + Tenofovir"  = res_nnrtite_fu_ec
+)
+
+# --------------------------------------------------
+# 3. Combine DE results
+# --------------------------------------------------
+
+df_all <- imap_dfr(de_list_fig6, function(df, comparison_name) {
+  df |>
+    mutate(Comparison = comparison_name) |>
+    select(Comparison, Feature, logFC, adj.P.Val)
+})
+
+# --------------------------------------------------
+# 4. Filter significant proteins
+# --------------------------------------------------
+
+df_sig <- df_all |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff)
+
+keep_proteins <- df_sig |>
+  count(Feature) |>
+  filter(n >= min_comparisons) |>
+  pull(Feature)
+
+# --------------------------------------------------
+# 5. Prepare plotting dataset
+# --------------------------------------------------
+
+df_plot <- df_all |>
+  filter(Feature %in% keep_proteins) |>
+  mutate(
+    logFC_plot = ifelse(
+      adj.P.Val < fdr_cutoff & abs(logFC) > logfc_cutoff,
+      logFC,
+      NA
+    ),
+    size_plot = ifelse(
+      adj.P.Val < fdr_cutoff,
+      -log10(adj.P.Val),
+      NA
+    )
+  )
+
+# --------------------------------------------------
+# 6. NEW ORDER: by shared significance
+# --------------------------------------------------
+
+feature_order <- df_plot |>
+  mutate(is_sig = !is.na(logFC_plot)) |>
+  group_by(Feature) |>
+  summarise(
+    n_sig = sum(is_sig, na.rm = TRUE),
+    max_fc = max(abs(logFC_plot), na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(n_sig, max_fc) |>   # 👈 least → most shared
+  pull(Feature)
+
+df_plot <- df_plot |>
+  mutate(
+    Feature = factor(Feature, levels = feature_order),
+    Comparison = factor(Comparison, levels = names(de_list_fig6))
+  )
+
+# --------------------------------------------------
+# 7. Plot
+# --------------------------------------------------
+
+p_bubble_fig6 <- ggplot(
+  df_plot,
+  aes(x = Comparison, y = Feature)
+) +
+  
+  geom_point(
+    aes(
+      size = size_plot,
+      fill = logFC_plot
+    ),
+    shape = 21,
+    color = "black",
+    stroke = 0.3,
+    na.rm = TRUE
+  ) +
+  
+  scale_fill_gradient2(
+    low = "#317EC2",
+    mid = "white",
+    high = "#C03830",
+    midpoint = 0,
+    name = "logFC"
+  ) +
+  
+  scale_size_continuous(
+    name = expression(-log[10]("adj.P.Val")),
+    range = c(2, 8)
+  ) +
+  
+  labs(
+    title = "Differentially abundant proteins in Elite controller comparisons",
+    x = "Comparison",
+    y = "Protein"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    legend.position = "right"
+  )
+
+p_bubble_fig6
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/bubble", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/bubble", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/bubble/bubble_elite_controller_comparisons.pdf",
+  p_bubble_fig6,
+  width = 14,
+  height = 30
+)
+
+ggsave(
+  "../plots/png/bubble/bubble_elite_controller_comparisons.png",
+  p_bubble_fig6,
+  width = 14,
+  height = 30,
+  dpi = 300
+)
 ```
 
-## Figure 3E
+#### Experiment
 
 ```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
+# --------------------------------------------------
+# 1. Define EC reference (baseline)
+# --------------------------------------------------
+
+ec_ref <- data_wide |>
+  inner_join(metadata, by = "DAid") |>
+  filter(Subgroup == "Elite controller", Timepoint == "Baseline") |>
+  select(-DAid, -ID, -Subgroup, -Timepoint) |>
+  summarise(across(everything(), mean, na.rm = TRUE))
+
+# --------------------------------------------------
+# 2. Compute distance to EC
+# --------------------------------------------------
+
+compute_distance <- function(x, ref) {
+  sqrt(sum((x - ref)^2, na.rm = TRUE))
+}
+
+df_dist <- data_wide |>
+  inner_join(metadata, by = "DAid") |>
+  filter(Disease == "HIV") |>
+  rowwise() |>
+  mutate(
+    distance_to_EC = compute_distance(
+      c_across(where(is.numeric)),
+      as.numeric(ec_ref)
+    )
+  ) |>
+  ungroup()
+
+# --------------------------------------------------
+# 3. Plot trajectories
+# --------------------------------------------------
+
+p_traj <- df_dist |>
+  ggplot(aes(x = Timepoint, y = log10(distance_to_EC), group = ID, color = Subgroup)) +
+  geom_line(alpha = 0.3) +
+  geom_point(size = 2) +
+  stat_summary(
+    aes(group = Subgroup),
+    fun = mean,
+    geom = "line",
+    linewidth = 1.5
+  ) +
+  labs(
+    title = "Trajectory toward Elite Controller proteomic state",
+    y = "Distance to EC (proteome)",
+    x = ""
+  ) +
+  theme_minimal()
+
+p_traj
 ```
 
-## Figure 3F
 
 ```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(igraph)
+library(ggraph)
+library(ggplot2)
 
+set.seed(12345)
+
+# --------------------------------------------------
+# 1. Settings
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0.5
+min_comparisons <- 1
+
+# --------------------------------------------------
+# 2. Function for cnet-style plot
+# --------------------------------------------------
+
+make_ec_cnet_plot <- function(de_list,
+                              title,
+                              fdr_cutoff = 0.05,
+                              logfc_cutoff = 0.5,
+                              min_comparisons = 1) {
+
+  cnet_edges <- imap_dfr(de_list, function(df, comparison_name) {
+
+    df |>
+      filter(
+        adj.P.Val < fdr_cutoff,
+        abs(logFC) > logfc_cutoff
+      ) |>
+      mutate(
+        Comparison = comparison_name,
+        Direction = case_when(
+          logFC > 0 ~ "Higher in EC",
+          logFC < 0 ~ "Lower in EC"
+        ),
+        abs_logFC = abs(logFC)
+      ) |>
+      select(
+        Comparison,
+        Feature,
+        logFC,
+        abs_logFC,
+        P.Value,
+        adj.P.Val,
+        Direction
+      )
+  })
+
+  if (nrow(cnet_edges) == 0) {
+    stop("No significant proteins found with the selected thresholds.")
+  }
+
+  keep_proteins <- cnet_edges |>
+    count(Feature, name = "n_comparisons") |>
+    filter(n_comparisons >= min_comparisons) |>
+    pull(Feature)
+
+  cnet_edges_plot <- cnet_edges |>
+    filter(Feature %in% keep_proteins)
+
+  comparison_nodes <- tibble(
+    name = names(de_list),
+    type = "Comparison",
+    n_comparisons = NA_integer_
+  )
+
+  protein_nodes <- cnet_edges_plot |>
+    count(Feature, name = "n_comparisons") |>
+    transmute(
+      name = Feature,
+      type = "Protein",
+      n_comparisons = n_comparisons
+    )
+
+  nodes <- bind_rows(comparison_nodes, protein_nodes) |>
+    filter(name %in% c(cnet_edges_plot$Comparison, cnet_edges_plot$Feature)) |>
+    mutate(
+      node_size = case_when(
+        type == "Comparison" ~ 6,
+        type == "Protein" ~ 2 + n_comparisons
+      )
+    )
+
+  graph_edges <- cnet_edges_plot |>
+    transmute(
+      from = Comparison,
+      to = Feature,
+      logFC,
+      abs_logFC,
+      adj.P.Val,
+      Direction
+    )
+
+  g <- graph_from_data_frame(
+    d = graph_edges,
+    vertices = nodes,
+    directed = FALSE
+  )
+
+  p <- ggraph(g, layout = "fr") +
+    geom_edge_link(
+      aes(
+        color = Direction,
+        width = abs_logFC
+      ),
+      alpha = 0.65
+    ) +
+    geom_node_point(
+      aes(
+        shape = type,
+        size = node_size,
+        fill = type
+      ),
+      color = "black",
+      stroke = 0.8
+    ) +
+    geom_node_text(
+      aes(label = name),
+      repel = TRUE,
+      size = 3.4,
+      max.overlaps = Inf
+    ) +
+    scale_edge_color_manual(
+      values = c(
+        "Higher in EC" = "#C03830",
+        "Lower in EC"  = "#317EC2"
+      )
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Comparison" = "white",
+        "Protein" = "grey90"
+      )
+    ) +
+    scale_shape_manual(
+      values = c(
+        "Comparison" = 22,
+        "Protein" = 21
+      )
+    ) +
+    scale_edge_width(
+      range = c(0.4, 2.3),
+      name = "|logFC|"
+    ) +
+    scale_size_continuous(
+      range = c(3, 9),
+      guide = "none"
+    ) +
+    labs(
+      title = title,
+      edge_color = "Direction",
+      shape = NULL,
+      fill = NULL
+    ) +
+    theme_void() +
+    theme(
+      plot.title = element_text(
+        hjust = 0.5,
+        size = 16,
+        face = "bold"
+      ),
+      legend.position = "right"
+    )
+
+  return(p)
+}
+
+# --------------------------------------------------
+# 3. Baseline DE result list
+# --------------------------------------------------
+
+de_list_baseline <- list(
+  "EC vs PLWH" =
+    res_ec_baseline_hiv,
+
+  "EC vs PHI" =
+    res_ec_primary_ba,
+
+  "EC vs MPI" =
+    res_ec_preserved_ba,
+
+  "EC vs SII" =
+    res_ec_impaired_ba
+)
+
+# --------------------------------------------------
+# 4. Follow-up DE result list
+# --------------------------------------------------
+
+de_list_followup <- list(
+  "EC vs PLWH" =
+    res_ec_hiv_fu,
+
+  "EC vs PHI" =
+    res_ec_primary_fu,
+
+  "EC vs MPI" =
+    res_ec_preserved_fu,
+
+  "EC vs SII" =
+    res_ec_impaired_fu,
+
+  "EC vs INSTI + Abacavir" =
+    res_instiaa_fu_ec,
+
+  "EC vs INSTI + Tenofovir" =
+    res_instite_fu_ec,
+
+  "EC vs NNRTI + Tenofovir" =
+    res_nnrtite_fu_ec
+)
+
+# --------------------------------------------------
+# 5. Generate plots
+# --------------------------------------------------
+
+p_cnet_baseline <- make_ec_cnet_plot(
+  de_list = de_list_baseline,
+  title = "Differentially abundant proteins in Elite controller comparisons at baseline",
+  fdr_cutoff = fdr_cutoff,
+  logfc_cutoff = logfc_cutoff,
+  min_comparisons = min_comparisons
+)
+
+p_cnet_followup <- make_ec_cnet_plot(
+  de_list = de_list_followup,
+  title = "Differentially abundant proteins in Elite controller comparisons at follow-up",
+  fdr_cutoff = fdr_cutoff,
+  logfc_cutoff = logfc_cutoff,
+  min_comparisons = min_comparisons
+)
+
+p_cnet_baseline
+p_cnet_followup
+
+# --------------------------------------------------
+# 6. Save plots
+# --------------------------------------------------
+
+dir.create("../plots/pdf/network", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/network", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/network/cnet_elite_controller_baseline.pdf",
+  p_cnet_baseline,
+  width = 14,
+  height = 12
+)
+
+ggsave(
+  "../plots/png/network/cnet_elite_controller_baseline.png",
+  p_cnet_baseline,
+  width = 14,
+  height = 12,
+  dpi = 300
+)
+
+ggsave(
+  "../plots/pdf/network/cnet_elite_controller_followup.pdf",
+  p_cnet_followup,
+  width = 18,
+  height = 20
+)
+
+ggsave(
+  "../plots/png/network/cnet_elite_controller_followup.png",
+  p_cnet_followup,
+  width = 14,
+  height = 16,
+  dpi = 300
+)
 ```
 
-## Figure 3G
+
+### PCA
 
 ```{r}
+input_df <- data_wide_ml |> filter(DAid %in% (metadata |> 
+                                             filter(Timepoint == "Follow-up") |>
+                                             filter(Treatment %in% c("INSTI + Abacavir", "INSTI + Tenofovir", "NNRTI + Tenofovir", "Untreated")))$DAid)
+```
 
+```{r}
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+```
+
+```{r}
+# --------------------------------------------------
+# Define custom treatment colors
+# --------------------------------------------------
+
+treatment_colors <- c(
+  "Untreated"            = "#E5C494",
+  "INSTI + Tenofovir"    = "#80B1D3",
+  "INSTI + Abacavir"     = "#FDB462",
+  "NNRTI + Tenofovir"    = "#B3DE69"
+)
+
+# --------------------------------------------------
+# Prepare data
+# --------------------------------------------------
+
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "Primary HIV infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite controller"
+      )
+    ),
+    
+    # 🔥 IMPORTANT: make sure Treatment matches names in palette
+    Treatment = factor(Treatment, levels = names(treatment_colors))
+  )
+
+# --------------------------------------------------
+# Shapes
+# --------------------------------------------------
+
+shape_values <- c(
+  "Primary HIV infection"      = 16,
+  "More preserved immunity"    = 17,
+  "Severely impaired immunity" = 15,
+  "Elite controller"           = 18
+)
+
+# --------------------------------------------------
+# Plot
+# --------------------------------------------------
+
+p <- ggplot(
+  pca_plot_df,
+  aes(x = PC1, y = PC2)
+) +
+  
+  geom_point(
+    aes(
+      color = Treatment,
+      shape = Subgroup,
+      size  = `CD4/CD8 ratio (follow-up)`
+    ),
+    alpha = 0.8
+  ) +
+  
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+
+  # 🔥 FIX: use manual color scale
+  scale_color_manual(values = treatment_colors) +
+
+  scale_shape_manual(values = shape_values) +
+  
+  scale_size_continuous(range = c(2, 6)) +
+
+  labs(
+    title = "PCA of HIV treatment by Subgroup",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    shape = "HIV Subgroup",
+    color = "Treatment",
+    size  = "CD4/CD8 ratio\n(follow-up)"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme_hiv() +
+  
+  # Convex hull (optional but kept)
+  geom_convexhull(
+    aes(fill = Treatment, colour = Treatment),
+    alpha = 0.2,
+    show.legend = FALSE
+  ) +
+
+  # 🔥 match fill colors too
+  scale_fill_manual(values = treatment_colors)
+
+p
+
+# --------------------------------------------------
+# Save
+# --------------------------------------------------
+
+ggsave(
+  filename = "pca_treatment_Subgroup_elite_controller_colored.pdf",
+  path     = "../plots/pdf/pca/",
+  plot     = p,
+  width    = 12,
+  height   = 7
+)
+
+ggsave(
+  filename = "pca_treatment_Subgroup_elite_controller_colored.png",
+  path     = "../plots/png/pca/",
+  plot     = p,
+  width    = 12,
+  height   = 7,
+  dpi      = 300
+)
+```
+
+#### Alternative
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# ==================================================
+# 1. Define custom colors
+# ==================================================
+
+treatment_colors <- c(
+  "Untreated"            = "#E5C494",
+  "INSTI + Tenofovir"    = "#80B1D3",
+  "INSTI + Abacavir"     = "#FDB462",
+  "NNRTI + Tenofovir"    = "#B3DE69"
+)
+
+# ==================================================
+# 2. Keep BOTH baseline + follow-up samples
+# ==================================================
+
+input_df <- data_wide_ml |>
+  filter(
+    DAid %in% (
+      metadata |>
+        filter(
+          Treatment %in% names(treatment_colors)
+        ) |>
+        pull(DAid)
+    )
+  )
+
+# ==================================================
+# 3. PCA
+# ==================================================
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# ==================================================
+# 4. Merge metadata
+# ==================================================
+
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "Primary HIV infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite controller"
+      )
+    ),
+
+    # Correct CD4/CD8 mapping
+    CD4CD8_plot = case_when(
+      Timepoint == "Baseline"  ~ `CD4/CD8 ratio (baseline)`,
+      Timepoint == "Follow-up" ~ `CD4/CD8 ratio (follow-up)`
+    ),
+
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+
+    # 🔥 CRITICAL: match palette levels
+    Treatment = factor(Treatment, levels = names(treatment_colors))
+  )
+
+# ==================================================
+# 5. Shapes
+# ==================================================
+
+shape_values <- c(
+  "Primary HIV infection"      = 16,
+  "More preserved immunity"    = 17,
+  "Severely impaired immunity" = 15,
+  "Elite controller"           = 18
+)
+
+# ==================================================
+# 6. Plot
+# ==================================================
+
+p <- ggplot(
+  pca_plot_df,
+  aes(x = PC1, y = PC2)
+) +
+  
+  geom_point(
+    aes(
+      color = Treatment,
+      shape = Subgroup,
+      size  = CD4CD8_plot
+    ),
+    alpha = 0.8
+  ) +
+  
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
+  
+  # 🔥 convex hull with SAME colors
+  geom_convexhull(
+    aes(fill = Treatment, colour = Treatment),
+    alpha = 0.2,
+    show.legend = FALSE
+  ) +
+  
+  facet_wrap(~ Timepoint, nrow = 1) +
+  
+  scale_shape_manual(values = shape_values) +
+  
+  # 🔥 FIXED COLORS
+  scale_color_manual(values = treatment_colors) +
+  scale_fill_manual(values = treatment_colors) +
+  
+  scale_size_continuous(range = c(2, 6)) +
+  
+  labs(
+    title = "PCA of HIV treatment by subgroup",
+    subtitle = "Baseline vs Follow-up (CD4/CD8 ratio mapped per timepoint)",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    shape = "HIV Subgroup",
+    size  = "CD4/CD8 ratio",
+    color = "Treatment"
+  ) +
+  
+  theme_minimal(base_size = 14) +
+  theme_hiv() +
+  theme(
+    strip.text = element_text(face = "bold"),
+    legend.position = "right"
+  )
+
+p
+
+# ==================================================
+# 7. Save
+# ==================================================
+
+ggsave(
+  filename = "pca_treatment_baseline_vs_followup.pdf",
+  path     = "../plots/pdf/pca/",
+  plot     = p,
+  width    = 16,
+  height   = 7
+)
+
+ggsave(
+  filename = "pca_treatment_baseline_vs_followup.png",
+  path     = "../plots/png/pca/",
+  plot     = p,
+  width    = 12,
+  height   = 7,
+  dpi      = 300
+)
+```
+
+### Treatment trajectories
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# ==================================================
+# 1. Define treatments
+# ==================================================
+
+treatment_keep <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir"
+)
+
+# ==================================================
+# 2. Prepare PCA input
+# ==================================================
+
+input_df <- data_wide_ml |>
+  filter(
+    DAid %in% (
+      metadata |>
+        filter(
+          Treatment %in% c(treatment_keep, "Untreated") |
+          Subgroup == "Elite controller"
+        ) |>
+        pull(DAid)
+    )
+  )
+
+# ==================================================
+# 3. PCA
+# ==================================================
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# ==================================================
+# 4. Merge metadata + define groups
+# ==================================================
+
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(metadata, by = "DAid") |>
+  mutate(
+    ID = as.factor(ID),
+
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "Primary HIV infection",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Elite controller"
+      )
+    ),
+
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+
+    # Ellipse groups
+    Ellipse_group = case_when(
+      Treatment %in% treatment_keep & Timepoint == "Baseline"  ~ "Treated baseline",
+      Treatment %in% treatment_keep & Timepoint == "Follow-up" ~ "Treated follow-up",
+      Subgroup == "Elite controller" & Timepoint == "Baseline"  ~ "Untreated baseline",
+      Subgroup == "Elite controller" & Timepoint == "Follow-up" ~ "Untreated follow-up"
+    ),
+
+    # Point colors
+    Color_group = case_when(
+      Subgroup == "Elite controller" & Timepoint == "Baseline"  ~ "EC baseline",
+      Subgroup == "Elite controller" & Timepoint == "Follow-up" ~ "EC follow-up",
+      TRUE & Timepoint == "Baseline"  ~ "Treated baseline",
+      TRUE & Timepoint == "Follow-up" ~ "Treated follow-up"
+    )
+  )
+
+# ==================================================
+# 5. PCA panel function
+# ==================================================
+
+make_pca_panel <- function(treatment_name) {
+  
+  df_sub <- pca_plot_df |>
+    filter(
+      Treatment == treatment_name |
+      Subgroup == "Elite controller"
+    )
+  
+  ggplot(df_sub, aes(x = PC1, y = PC2)) +
+    
+    # --- trajectories ---
+    geom_line(
+      aes(group = ID),
+      color = "grey70",
+      alpha = 0.6,
+      linewidth = 0.5
+    ) +
+    
+    # --- filled ellipses ---
+    stat_ellipse(
+      aes(fill = Ellipse_group),
+      geom = "polygon",
+      alpha = 0.15,
+      color = NA
+    ) +
+    
+    # --- dashed ellipse outlines ---
+    stat_ellipse(
+      aes(color = Ellipse_group),
+      linewidth = 1.2,
+      linetype = "dashed"
+    ) +
+    
+    # --- POINTS (FIXED) ---
+    geom_point(
+      aes(
+        shape = Subgroup,
+        fill  = Color_group
+      ),
+      size = 3,
+      color = "black",
+      stroke = 0.5,
+      alpha = 0.95
+    ) +
+    
+    # --- axes ---
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    
+    coord_cartesian(
+      xlim = c(-40, 45),
+      ylim = c(-35, 20)
+    ) +
+    
+    # --- ellipse colors ---
+    scale_color_manual(
+      values = c(
+        "Treated baseline"  = "steelblue",
+        "Treated follow-up" = "firebrick",
+        "Untreated baseline"  = "darkgreen",
+        "Untreated follow-up" = "lightgreen"
+      )
+    ) +
+    
+    # --- POINT COLORS (UPDATED) ---
+    scale_fill_manual(
+      values = c(
+        "Treated baseline" = "steelblue",
+        "Treated follow-up" = "firebrick",
+        "EC baseline" = "darkgreen",
+        "EC follow-up" = "lightgreen"
+      )
+    ) +
+    
+    # --- FILLABLE SHAPES ---
+    scale_shape_manual(
+      values = c(
+        "Primary HIV infection"      = 21,
+        "More preserved immunity"    = 24,
+        "Severely impaired immunity" = 22,
+        "Elite controller"           = 23
+      )
+    ) +
+    
+    labs(
+      title = treatment_name,
+      x = paste0("PC1 (", round(pc1, 2), "%)"),
+      y = paste0("PC2 (", round(pc2, 2), "%)"),
+      fill  = "Sample type",
+      color = "Ellipse group"
+    ) +
+    
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5)
+    )
+}
+
+# ==================================================
+# 6. Create panels
+# ==================================================
+
+p1 <- make_pca_panel("INSTI + Abacavir")
+p2 <- make_pca_panel("INSTI + Tenofovir")
+p3 <- make_pca_panel("NNRTI + Tenofovir")
+
+# ==================================================
+# 7. Combine
+# ==================================================
+
+plot_final <- (p1 | p2 | p3) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    title = "Trajectory in PCA space relative to Elite Controllers",
+    subtitle = "Colored by treatment vs EC and timepoint",
+    theme = theme(
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5)
+    )
+  ) &
+  theme_hiv() +
+  theme(legend.position = "right")
+
+plot_final
+
+# ==================================================
+# 8. Save
+# ==================================================
+
+dir.create("../plots/pdf/pca", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/pca", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/pca/pca_trajectory_per_treatment_fixed_colors.pdf",
+  plot_final,
+  width = 20,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/pca/pca_trajectory_per_treatment_fixed_colors.png",
+  plot_final,
+  width = 14,
+  height = 5,
+  dpi = 300
+)
+```
+
+### Boxplot changes
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tibble)
+
+# ==================================================
+# 1. Treatments
+# ==================================================
+
+treatment_keep <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir"
+)
+
+treatment_colors <- c(
+  "INSTI + Abacavir"  = "#FDB462",
+  "INSTI + Tenofovir" = "#80B1D3",
+  "NNRTI + Tenofovir" = "#B3DE69"
+)
+
+# ==================================================
+# 2. Baseline treatment per ID
+# ==================================================
+
+treatment_baseline <- metadata |>
+  filter(Disease == "HIV", Timepoint == "Baseline") |>
+  select(ID, Treatment_baseline = Treatment)
+
+# ==================================================
+# 3. Build proteomics matrix
+# ==================================================
+
+mat_df <- data_wide |>
+  inner_join(metadata, by = "DAid") |>
+  filter(Disease == "HIV") |>
+  select(DAid, where(is.numeric)) |>
+  distinct(DAid, .keep_all = TRUE)
+
+mat <- mat_df |>
+  column_to_rownames("DAid") |>
+  as.matrix()
+
+# ==================================================
+# 4. Remove problematic proteins (CRITICAL)
+# ==================================================
+
+# Remove near-zero variance
+sd_cols <- apply(mat, 2, function(x) sd(x, na.rm = TRUE))
+mat <- mat[, sd_cols > 1e-6]
+
+# Remove columns with too many NA
+na_fraction <- colMeans(is.na(mat))
+mat <- mat[, na_fraction < 0.5]
+
+# ==================================================
+# 5. Z-score scaling
+# ==================================================
+
+mat_scaled <- scale(mat)
+
+# Remove columns that became NA/Inf after scaling
+valid_cols <- apply(mat_scaled, 2, function(x) all(is.finite(x)))
+mat_scaled <- mat_scaled[, valid_cols]
+
+# ==================================================
+# 6. PCA
+# ==================================================
+
+pca <- prcomp(mat_scaled, center = FALSE, scale. = FALSE)
+
+# Choose PCs (adjust if needed)
+n_pc <- 15
+
+pc_scores <- as.data.frame(pca$x[, 1:n_pc]) |>
+  rownames_to_column("DAid")
+
+# ==================================================
+# 7. EC reference (baseline)
+# ==================================================
+
+ec_ids <- metadata |>
+  filter(
+    Subgroup == "Elite controller",
+    Timepoint == "Baseline"
+  ) |>
+  pull(DAid)
+
+ec_ref <- pc_scores |>
+  filter(DAid %in% ec_ids) |>
+  summarise(across(starts_with("PC"), mean, na.rm = TRUE)) |>
+  as.numeric()
+
+# ==================================================
+# 8. Compute PCA-based distance
+# ==================================================
+
+df_dist <- pc_scores |>
+  inner_join(metadata, by = "DAid") |>
+  inner_join(treatment_baseline, by = "ID") |>
+  filter(Treatment_baseline %in% treatment_keep) |>
+  rowwise() |>
+  mutate(
+    distance_to_EC = sqrt(
+      sum((c_across(starts_with("PC")) - ec_ref)^2)
+    )
+  ) |>
+  ungroup()
+
+# ==================================================
+# 9. Keep paired individuals
+# ==================================================
+
+df_paired <- df_dist |>
+  group_by(ID) |>
+  filter(n_distinct(Timepoint) == 2) |>
+  ungroup() |>
+  mutate(
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+    Treatment_baseline = factor(Treatment_baseline, levels = treatment_keep)
+  )
+
+# ==================================================
+# 10. Plot (FINAL STYLE)
+# ==================================================
+
+p <- ggplot(
+  df_paired,
+  aes(x = Timepoint, y = log10(distance_to_EC))
+) +
+  
+  # Paired lines
+  geom_line(
+    aes(group = ID),
+    color = "grey70",
+    alpha = 0.7
+  ) +
+  
+  # Boxplots
+  geom_boxplot(
+    fill = "white",
+    color = "black",
+    width = 0.5,
+    outlier.shape = NA
+  ) +
+  
+  # Points
+  geom_point(
+    aes(color = Treatment_baseline),
+    size = 3,
+    alpha = 0.9
+  ) +
+  
+  scale_color_manual(values = treatment_colors) +
+  
+  facet_wrap(~ Treatment_baseline, nrow = 1) +
+  
+  labs(
+    title = "PCA-based distance to Elite Controllers",
+    subtitle = "Each line represents one individual",
+    y = "log10 distance to EC (PCA space)",
+    x = ""
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "none",
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p
+
+# ==================================================
+# 11. Save
+# ==================================================
+
+dir.create("../plots/pdf/trajectory", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/trajectory", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/trajectory/ec_distance_pca.pdf",
+  p,
+  width = 12,
+  height = 4
+)
+
+ggsave(
+  "../plots/png/trajectory/ec_distance_pca.png",
+  p,
+  width = 12,
+  height = 4,
+  dpi = 300
+)
+```
+
+```{r}
+# ==================================================
+# 10. Plot (FINAL STYLE WITH SHAPES)
+# ==================================================
+
+shape_values <- c(
+  "Primary HIV infection"      = 16, # ●
+  "More preserved immunity"    = 17, # ▲
+  "Severely impaired immunity" = 15, # ■
+  "Elite controller"           = 18  # ◆
+)
+
+p <- ggplot(
+  df_paired,
+  aes(x = Timepoint, y = log10(distance_to_EC))
+) +
+  
+  # Paired lines
+  geom_line(
+    aes(group = ID),
+    color = "grey70",
+    alpha = 0.7
+  ) +
+  
+  # Boxplots
+  geom_boxplot(
+    fill = "white",
+    color = "black",
+    width = 0.5,
+    outlier.shape = NA
+  ) +
+  
+  # Points (UPDATED)
+  geom_point(
+    aes(
+      color = Treatment_baseline,
+      shape = Subgroup
+    ),
+    size = 3,
+    alpha = 0.9
+  ) +
+  
+  scale_color_manual(values = treatment_colors) +
+  
+  scale_shape_manual(values = shape_values) +
+  
+  facet_wrap(~ Treatment_baseline, nrow = 1) +
+  
+  labs(
+    title = "PCA-based distance to Elite Controllers",
+    subtitle = "Each line represents one individual",
+    y = "log10 distance to EC (PCA space)",
+    x = "",
+    shape = "HIV-1 subgroup",
+    color = "Treatment"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "right",
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p
+```
+
+```{r}
+# ==================================================
+# 10. Plot (BOX + DENSITY PER SUBGROUP)
+# ==================================================
+
+library(ggdist)  # install.packages("ggdist") if needed
+
+shape_values <- c(
+  "Primary HIV infection"      = 21,
+  "More preserved immunity"    = 24,
+  "Severely impaired immunity" = 22,
+  "Elite controller"           = 23
+)
+
+subgroup_colors <- c(
+  "Primary HIV infection"      = "#e7298a",
+  "More preserved immunity"    = "#d95f02",
+  "Severely impaired immunity" = "#7570b3",
+  "Elite controller"           = "#1b9e77"
+)
+
+p <- ggplot(
+  df_paired,
+  aes(x = Timepoint, y = log10(distance_to_EC))
+) +
+  
+  # --- subgroup density (half-violin style) ---
+  stat_halfeye(
+    aes(fill = Subgroup),
+    adjust = 0.5,
+    width = 0.6,
+    .width = 0,
+    justification = -0.2,
+    alpha = 0.4,
+    point_colour = NA
+  ) +
+  
+  # --- boxplot ---
+  geom_boxplot(
+    width = 0.25,
+    fill = "white",
+    color = "black",
+    outlier.shape = NA
+  ) +
+  
+  # --- paired lines ---
+  geom_line(
+    aes(group = ID),
+    color = "grey70",
+    alpha = 0.6
+  ) +
+  
+  # --- points ---
+  geom_point(
+    aes(
+      color = Treatment_baseline,
+      shape = Subgroup
+    ),
+    size = 3,
+    alpha = 0.9,
+    position = position_jitter(width = 0.05)
+  ) +
+  
+  scale_color_manual(values = treatment_colors) +
+  scale_shape_manual(values = shape_values) +
+  scale_fill_manual(values = subgroup_colors) +
+  
+  facet_wrap(~ Treatment_baseline, nrow = 1) +
+  
+  labs(
+    title = "PCA-based distance to Elite Controllers",
+    subtitle = "Density shows subgroup distributions within each treatment",
+    y = "log10 distance to EC (PCA space)",
+    x = "",
+    fill = "HIV-1 subgroup",
+    shape = "HIV-1 subgroup",
+    color = "Treatment"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+p
+
+ggsave(
+  "../plots/pdf/trajectory/ec_distance_pca_density.pdf",
+  p,
+  width = 20,
+  height = 10
+)
+```
+
+### Boxplot delta
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ==================================================
+# 1. Compute delta distance
+# ==================================================
+
+df_delta <- df_paired |>
+  select(ID, Timepoint, Treatment_baseline, distance_to_EC) |>
+  pivot_wider(
+    names_from = Timepoint,
+    values_from = distance_to_EC
+  ) |>
+  mutate(
+    delta_distance = `Follow-up` - Baseline
+  )
+
+# ==================================================
+# 2. Plot Δ distance
+# ==================================================
+
+p_delta <- ggplot(
+  df_delta,
+  aes(x = Treatment_baseline, y = delta_distance)
+) +
+  
+  # Boxplot (clean style)
+  geom_boxplot(
+    fill = "white",
+    color = "black",
+    width = 0.6,
+    outlier.shape = NA
+  ) +
+  
+  # Jittered points
+  geom_jitter(
+    aes(color = Treatment_baseline),
+    width = 0.15,
+    size = 3,
+    alpha = 0.9
+  ) +
+  
+  # Reference line (no change)
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  
+  scale_color_manual(values = treatment_colors) +
+  
+  labs(
+    title = "Change in distance to Elite Controllers",
+    subtitle = "Follow-up − Baseline (negative = more EC-like)",
+    x = "Treatment",
+    y = "Δ distance to EC (PCA space)"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p_delta
+
+# ==================================================
+# 3. Save
+# ==================================================
+
+ggsave(
+  "../plots/pdf/trajectory/ec_delta_distance.pdf",
+  p_delta,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  "../plots/png/trajectory/ec_delta_distance.png",
+  p_delta,
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+```
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ==================================================
+# 1. Compute delta distance
+# ==================================================
+
+df_delta <- df_paired |>
+  select(ID, Timepoint, Treatment_baseline, Subgroup, distance_to_EC) |>
+  pivot_wider(
+    names_from = Timepoint,
+    values_from = distance_to_EC
+  ) |>
+  mutate(
+    delta_distance = `Follow-up` - Baseline
+  )
+
+# ==================================================
+# 2. Add ΔCD4/CD8 (from metadata)
+# ==================================================
+
+df_delta <- df_delta |>
+  left_join(
+    metadata |>
+      filter(Timepoint == "Follow-up") |>   # delta is typically defined here
+      select(ID, `Delta CD4/CD8`),
+    by = "ID"
+  ) |>
+  rename(delta_cd4cd8 = `Delta CD4/CD8`)
+
+# ==================================================
+# 3. Define shapes
+# ==================================================
+
+shape_values <- c(
+  "Primary HIV infection"      = 16,
+  "More preserved immunity"    = 17,
+  "Severely impaired immunity" = 15,
+  "Elite controller"           = 18
+)
+
+# ==================================================
+# 4. Plot Δ distance
+# ==================================================
+
+p_delta <- ggplot(
+  df_delta,
+  aes(x = Treatment_baseline, y = delta_distance)
+) +
+  
+  # Boxplot
+  geom_boxplot(
+    fill = "white",
+    color = "black",
+    width = 0.6,
+    outlier.shape = NA
+  ) +
+  
+  # Points (UPDATED)
+  geom_jitter(
+    aes(
+      shape = Subgroup,
+      color = delta_cd4cd8
+    ),
+    width = 0.15,
+    size = 3,
+    alpha = 0.9
+  ) +
+  
+  # Reference line
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  
+  # 🔥 Continuous biological gradient
+  scale_color_gradient2(
+    low = "#317EC2",   # negative change
+    mid = "white",
+    high = "#C03830",  # positive change
+    midpoint = 0.5,
+    name = "Δ CD4/CD8"
+  ) +
+  
+  scale_shape_manual(values = shape_values) +
+  
+  labs(
+    title = "Change in distance to Elite Controllers",
+    subtitle = "Follow-up − Baseline (negative = more EC-like)",
+    x = "Treatment",
+    y = "Δ distance to EC (PCA space)",
+    shape = "HIV-1 subgroup"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p_delta
+
+# ==================================================
+# 5. Save
+# ==================================================
+
+ggsave(
+  "../plots/pdf/trajectory/ec_delta_distance.pdf",
+  p_delta,
+  width = 7,
+  height = 5
+)
+
+ggsave(
+  "../plots/png/trajectory/ec_delta_distance.png",
+  p_delta,
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+```
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ==================================================
+# 1. Compute delta distance
+# ==================================================
+
+df_delta <- df_paired |>
+  select(ID, Timepoint, Treatment_baseline, Subgroup, distance_to_EC) |>
+  pivot_wider(
+    names_from = Timepoint,
+    values_from = distance_to_EC
+  ) |>
+  mutate(
+    delta_distance = `Follow-up` - Baseline
+  )
+
+# ==================================================
+# 2. Define shapes + colors
+# ==================================================
+
+shape_values <- c(
+  "Primary HIV infection"      = 16,
+  "More preserved immunity"    = 17,
+  "Severely impaired immunity" = 15,
+  "Elite controller"           = 18
+)
+
+subgroup_colors <- c(
+  "Primary HIV infection"      = "#e7298a",
+  "More preserved immunity"    = "#d95f02",
+  "Severely impaired immunity" = "#7570b3",
+  "Elite controller"           = "#1b9e77"
+)
+
+# ==================================================
+# 3. Plot Δ distance
+# ==================================================
+
+p_delta <- ggplot(
+  df_delta,
+  aes(x = Treatment_baseline, y = delta_distance)
+) +
+  
+  # Boxplot
+  geom_boxplot(
+    fill = "white",
+    color = "black",
+    width = 0.6,
+    outlier.shape = NA
+  ) +
+  
+  # Points (UPDATED)
+  geom_jitter(
+    aes(
+      shape = Subgroup,
+      color = Subgroup
+    ),
+    width = 0.15,
+    size = 3,
+    alpha = 0.9
+  ) +
+  
+  # Reference line
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  
+  scale_color_manual(values = subgroup_colors) +
+  scale_shape_manual(values = shape_values) +
+  
+  labs(
+    title = "Change in distance to ECs",
+    subtitle = "Follow-up − Baseline (negative = more EC-like)",
+    x = "Treatment",
+    y = "Delta distance to EC (PCA space)",
+    shape = "HIV-1 subgroup",
+    color = "HIV-1 subgroup"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme_hiv() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p_delta
+
+# ==================================================
+# 4. Save
+# ==================================================
+
+ggsave(
+  "../plots/pdf/trajectory/ec_delta_distance_subgroup.pdf",
+  p_delta,
+  width = 8,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/trajectory/ec_delta_distance_subgroup.png",
+  p_delta,
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+```
+
+
+### Boxplots
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+
+# ==================================================
+# 1. DEFINE COLORS (🔥 ALL INCLUDED)
+# ==================================================
+
+treatment_colors <- c(
+  "INSTI + Tenofovir" = "#80B1D3",
+  "INSTI + Abacavir"  = "#FDB462",
+  "NNRTI + Tenofovir" = "#B3DE69"
+)
+
+Subgroup_colors <- c(
+  "Primary HIV infection"       = "#4B988F",
+  "Severely impaired immunity"  = "#EABBBB",
+  "More preserved immunity"     = "#C89A1B",
+  "Elite controller"            = "#5A588B"
+)
+
+healthy <- "#CCCCCC"
+
+# 🔥 FINAL palette
+final_colors <- c(
+  treatment_colors,
+  Subgroup_colors,
+  "Healthy" = healthy
+)
+
+# ==================================================
+# 2. PROTEINS
+# ==================================================
+
+highlighted_proteins <- c(
+  "CSF3",
+  "RBP2",
+  "CLEC10A",
+  "DKK4",
+  "SCGN",
+  "CKMT1A_CKMT1B"
+)
+
+# ==================================================
+# 3. GROUP DEFINITIONS
+# ==================================================
+
+treatment_order <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir"
+)
+
+Subgroup_order <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity"
+)
+
+# ==================================================
+# 4. BASE DATA
+# ==================================================
+
+base_df <- data_long |>
+  select(DAid, Feature, NPX) |>
+  inner_join(metadata, by = "DAid") |>
+  filter(Feature %in% highlighted_proteins)
+
+# ==================================================
+# 5. BUILD GROUPS
+# ==================================================
+
+df_treatment <- base_df |>
+  filter(Treatment %in% treatment_order) |>
+  mutate(
+    Group_time  = paste(Treatment, Timepoint, sep = " – "),
+    Group_color = Treatment
+  )
+
+df_subgroup <- base_df |>
+  filter(Subgroup %in% Subgroup_order) |>
+  mutate(
+    Group_time  = paste(Subgroup, Timepoint, sep = " – "),
+    Group_color = Subgroup
+  )
+
+df_elite <- base_df |>
+  filter(Subgroup == "Elite controller") |>
+  mutate(
+    Group_time  = paste("Elite controller", Timepoint, sep = " – "),
+    Group_color = "Elite controller"
+  )
+
+df_healthy <- base_df |>
+  filter(Subgroup == "Healthy") |>
+  mutate(
+    Group_time  = "Healthy",
+    Group_color = "Healthy"
+  )
+
+# ==================================================
+# 6. COMBINE
+# ==================================================
+
+p_up <- bind_rows(
+  df_treatment,
+  df_subgroup,
+  df_elite,
+  df_healthy
+) |>
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins),
+    Group_color = factor(Group_color, levels = names(final_colors))
+  )
+
+# ==================================================
+# 7. X-AXIS ORDER
+# ==================================================
+
+x_order <- c(
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+
+  "Primary HIV infection – Baseline",
+  "Primary HIV infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+
+  "Elite controller – Baseline",
+  "Elite controller – Follow-up",
+
+  "Healthy"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ==================================================
+# 8. PLOT
+# ==================================================
+
+p_up_plot <- ggplot(
+  p_up,
+  aes(x = Group_time, y = NPX, group = Group_time)
+) +
+  
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    size   = 2,
+    show.legend = FALSE
+  ) +
+  
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  
+  facet_wrap(~ Feature, ncol = 2, scales = "free_y") +
+  
+  scale_color_manual(values = final_colors) +
+  scale_fill_manual(values = final_colors) +
+  
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  
+  labs(
+    subtitle = "Treatments, HIV subgroups, Elite controllers (baseline/follow-up), and Healthy",
+    x = "Group / Timepoint",
+    y = "NPX"
+  )
+
+p_up_plot
+
+# ==================================================
+# 9. SAVE
+# ==================================================
+
+ggsave(
+  filename = "boxplot_correct_palette.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 9,
+  height   = 16
+)
+
+ggsave(
+  filename = "boxplot_correct_palette.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 9,
+  height   = 16,
+  dpi      = 300
+)
+```
+
+### Alternative
+
+```{r}
+# ---------------------------
+# Proteins of interest
+# ---------------------------
+highlighted_proteins <- c(
+  "EPS8L2",
+  "CKMT1A_CKMT1B",
+  "RBP2",
+  "ACY1",
+  "ICAM3",
+  "CD6",
+  "CXCL13",
+  "PDCD1"
+)
+
+# ---------------------------
+# Treatment groups of interest
+# ---------------------------
+treatment_order <- c(
+  "INSTI + Abacavir",
+  "INSTI + Tenofovir",
+  "NNRTI + Tenofovir"
+)
+
+# ---------------------------
+# HIV Subgroup order
+# ---------------------------
+Subgroup_order <- c(
+  "Primary HIV infection",
+  "More preserved immunity",
+  "Severely impaired immunity"
+)
+
+# ---------------------------
+# Colors
+# ---------------------------
+group_colors <- c(
+  "INSTI + Abacavir"           = "#CC79A7",
+  "INSTI + Tenofovir"          = "#0072B2",
+  "NNRTI + Tenofovir"          = "#D55E00",
+  "Primary HIV infection"      = "#E69F00",
+  "More preserved immunity"    = "#56B4E9",
+  "Severely impaired immunity" = "#009E73",
+  "Elite controller"           = "#999999",
+  "Healthy"                    = "#71BF6E"
+)
+
+# ---------------------------
+# Base data
+# ---------------------------
+base_df <- data_long |>
+  select(DAid, Feature, NPX) |>
+  inner_join(
+    metadata,
+    by = "DAid"
+  ) |>
+  filter(Feature %in% highlighted_proteins)
+
+# ---------------------------
+# 1) Treatment rows (Baseline + Follow-up)
+# ---------------------------
+df_treatment <- base_df |>
+  filter(Treatment %in% treatment_order) |>
+  mutate(
+    Group_time  = paste(Treatment, Timepoint, sep = " – "),
+    Group_color = Treatment
+  )
+
+# ---------------------------
+# 2) HIV subgroup rows (Baseline + Follow-up)
+# ---------------------------
+df_subgroup <- base_df |>
+  filter(Subgroup %in% Subgroup_order) |>
+  mutate(
+    Group_time  = paste(Subgroup, Timepoint, sep = " – "),
+    Group_color = Subgroup
+  )
+
+# ---------------------------
+# 3) Elite controller rows (Baseline + Follow-up)
+# ---------------------------
+df_elite <- base_df |>
+  filter(Subgroup == "Elite controller") |>
+  mutate(
+    Group_time  = paste("Elite controller", Timepoint, sep = " – "),
+    Group_color = "Elite controller"
+  )
+
+# ---------------------------
+# 4) Healthy rows (single reference group)
+# ---------------------------
+df_healthy <- base_df |>
+  filter(Subgroup == "Healthy") |>
+  mutate(
+    Group_time  = "Healthy",
+    Group_color = "Healthy"
+  )
+
+# ---------------------------
+# Combine (intentional duplication!)
+# ---------------------------
+p_up <- bind_rows(
+  df_treatment,
+  df_subgroup,
+  df_elite,
+  df_healthy
+) |>
+  mutate(
+    Feature = factor(Feature, levels = highlighted_proteins)
+  )
+
+# ---------------------------
+# Explicit x-axis order
+# ---------------------------
+x_order <- c(
+  # Treatments
+  "INSTI + Abacavir – Baseline",
+  "INSTI + Abacavir – Follow-up",
+  "INSTI + Tenofovir – Baseline",
+  "INSTI + Tenofovir – Follow-up",
+  "NNRTI + Tenofovir – Baseline",
+  "NNRTI + Tenofovir – Follow-up",
+
+  # HIV subgroups
+  "Primary HIV infection – Baseline",
+  "Primary HIV infection – Follow-up",
+  "More preserved immunity – Baseline",
+  "More preserved immunity – Follow-up",
+  "Severely impaired immunity – Baseline",
+  "Severely impaired immunity – Follow-up",
+
+  # Elite controllers
+  "Elite controller – Baseline",
+  "Elite controller – Follow-up",
+
+  # Healthy
+  "Healthy"
+)
+
+p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
+
+# ---------------------------
+# Plot
+# ---------------------------
+p_up_plot <- ggplot(
+  p_up,
+  aes(x = Group_time, y = NPX, group = Group_time)
+) +
+  geom_quasirandom(
+    aes(color = Group_color),
+    alpha  = 0.7,
+    width  = 0.25,
+    stroke = 0,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = Group_color),
+    color = "black",
+    outlier.shape = NA,
+    alpha = 0.6
+  ) +
+  facet_wrap(~ Feature, nrow = 2, scales = "free_y") +
+  scale_color_manual(values = group_colors) +
+  scale_fill_manual(values = group_colors) +
+  theme_classic() +
+  theme_hiv() +
+  theme(
+    axis.text.x = element_text(angle = 75, hjust = 1),
+    legend.position = "none"
+  ) +
+  labs(
+    subtitle = "Treatments, HIV subgroups, Elite controllers (baseline/follow-up), and Healthy",
+    x = "Group / Timepoint",
+    y = "NPX"
+  )
+
+print(p_up_plot)
+
+# ---------------------------
+# Save
+# ---------------------------
+ggsave(
+  filename = "boxplot_RRM2_CSF3_CD4_CLEC10A_groups.pdf",
+  plot     = p_up_plot,
+  path     = "../plots/pdf/boxplot/",
+  width    = 16,
+  height   = 8
+)
+
+ggsave(
+  filename = "boxplot_RRM2_CSF3_CD4_CLEC10A_groups.png",
+  plot     = p_up_plot,
+  path     = "../plots/png/boxplot/",
+  width    = 8,
+  height   = 16
+)
 ```
 
 # Save plots
 
-## Figure 3
+## Figure 6
 
 ```{r}
+# Combine plot A-D into a single plot
+library(patchwork)
 
+p_combined <- (p_volcano_ec_hiv_ba + p_volcano_ec_primary_ba + p_volcano_ec_impaired_ba / p_volcano_ec_hiv_fu / p_volcano_ec_primary_fu / p_volcano_ec_preserved_fu / p_volcano_ec_impaired_fu) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom")
 ```
 
-## Supplementary Figure 3
+## Supplementary Figure 6
 
 ```{r}
 
@@ -98,7 +3513,17 @@ data_wide <- read_csv("../data/data_wide.csv")
 # Save Tables
 
 ```{r}
-
+res_ec_baseline_hiv
+res_ec_primary_ba
+res_ec_impaired_ba
+res_ec_preserved_ba
+res_ec_hiv_fu
+res_ec_primary_fu
+res_ec_preserved_fu
+res_ec_impaired_fu
+res_instiaa_fu_ec
+res_instite_fu_ec
+res_nnrtite_fu_ec
 ```
 
 # SessionInfo
