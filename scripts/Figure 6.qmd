@@ -3291,69 +3291,49 @@ ggsave(
 )
 ```
 
-### Alternative
+# Supplementary Figure 15
+
+## Figure S15F
 
 ```{r}
-# ---------------------------
-# Proteins of interest
-# ---------------------------
-highlighted_proteins <- c(
-  "EPS8L2",
-  "CKMT1A_CKMT1B",
-  "RBP2",
-  "ACY1",
-  "ICAM3",
-  "CD6",
-  "CXCL13",
-  "PDCD1"
+# ==================================================
+# 0. Colors (🔥 YOUR FINAL PALETTE)
+# ==================================================
+
+treatment_colors <- c(
+  "INSTI + Tenofovir" = "#80B1D3",
+  "INSTI + Abacavir"  = "#FDB462",
+  "NNRTI + Tenofovir" = "#B3DE69"
 )
 
-# ---------------------------
-# Treatment groups of interest
-# ---------------------------
-treatment_order <- c(
-  "INSTI + Abacavir",
-  "INSTI + Tenofovir",
-  "NNRTI + Tenofovir"
+Subgroup_colors <- c(
+  "Primary HIV infection"       = "#4B988F",
+  "Severely impaired immunity"  = "#EABBBB",
+  "More preserved immunity"     = "#C89A1B",
+  "Elite controller"            = "#5A588B"
 )
 
-# ---------------------------
-# HIV Subgroup order
-# ---------------------------
-Subgroup_order <- c(
-  "Primary HIV infection",
-  "More preserved immunity",
-  "Severely impaired immunity"
+healthy <- "#CCCCCC"
+
+final_colors <- c(
+  treatment_colors,
+  Subgroup_colors,
+  "Healthy" = healthy
 )
 
-# ---------------------------
-# Colors
-# ---------------------------
-group_colors <- c(
-  "INSTI + Abacavir"           = "#CC79A7",
-  "INSTI + Tenofovir"          = "#0072B2",
-  "NNRTI + Tenofovir"          = "#D55E00",
-  "Primary HIV infection"      = "#E69F00",
-  "More preserved immunity"    = "#56B4E9",
-  "Severely impaired immunity" = "#009E73",
-  "Elite controller"           = "#999999",
-  "Healthy"                    = "#71BF6E"
-)
-
-# ---------------------------
+# ==================================================
 # Base data
-# ---------------------------
+# ==================================================
+
 base_df <- data_long |>
   select(DAid, Feature, NPX) |>
-  inner_join(
-    metadata,
-    by = "DAid"
-  ) |>
+  inner_join(metadata, by = "DAid") |>
   filter(Feature %in% highlighted_proteins)
 
-# ---------------------------
-# 1) Treatment rows (Baseline + Follow-up)
-# ---------------------------
+# ==================================================
+# 1) Treatment rows
+# ==================================================
+
 df_treatment <- base_df |>
   filter(Treatment %in% treatment_order) |>
   mutate(
@@ -3361,9 +3341,10 @@ df_treatment <- base_df |>
     Group_color = Treatment
   )
 
-# ---------------------------
-# 2) HIV subgroup rows (Baseline + Follow-up)
-# ---------------------------
+# ==================================================
+# 2) Subgroup rows
+# ==================================================
+
 df_subgroup <- base_df |>
   filter(Subgroup %in% Subgroup_order) |>
   mutate(
@@ -3371,9 +3352,10 @@ df_subgroup <- base_df |>
     Group_color = Subgroup
   )
 
-# ---------------------------
-# 3) Elite controller rows (Baseline + Follow-up)
-# ---------------------------
+# ==================================================
+# 3) Elite controller
+# ==================================================
+
 df_elite <- base_df |>
   filter(Subgroup == "Elite controller") |>
   mutate(
@@ -3381,9 +3363,10 @@ df_elite <- base_df |>
     Group_color = "Elite controller"
   )
 
-# ---------------------------
-# 4) Healthy rows (single reference group)
-# ---------------------------
+# ==================================================
+# 4) Healthy
+# ==================================================
+
 df_healthy <- base_df |>
   filter(Subgroup == "Healthy") |>
   mutate(
@@ -3391,9 +3374,10 @@ df_healthy <- base_df |>
     Group_color = "Healthy"
   )
 
-# ---------------------------
-# Combine (intentional duplication!)
-# ---------------------------
+# ==================================================
+# Combine
+# ==================================================
+
 p_up <- bind_rows(
   df_treatment,
   df_subgroup,
@@ -3401,81 +3385,68 @@ p_up <- bind_rows(
   df_healthy
 ) |>
   mutate(
-    Feature = factor(Feature, levels = highlighted_proteins)
+    Feature = factor(Feature, levels = highlighted_proteins),
+
+    # 🔥 CRITICAL: enforce palette matching
+    Group_color = factor(Group_color, levels = names(final_colors))
   )
 
-# ---------------------------
-# Explicit x-axis order
-# ---------------------------
-x_order <- c(
-  # Treatments
-  "INSTI + Abacavir – Baseline",
-  "INSTI + Abacavir – Follow-up",
-  "INSTI + Tenofovir – Baseline",
-  "INSTI + Tenofovir – Follow-up",
-  "NNRTI + Tenofovir – Baseline",
-  "NNRTI + Tenofovir – Follow-up",
-
-  # HIV subgroups
-  "Primary HIV infection – Baseline",
-  "Primary HIV infection – Follow-up",
-  "More preserved immunity – Baseline",
-  "More preserved immunity – Follow-up",
-  "Severely impaired immunity – Baseline",
-  "Severely impaired immunity – Follow-up",
-
-  # Elite controllers
-  "Elite controller – Baseline",
-  "Elite controller – Follow-up",
-
-  # Healthy
-  "Healthy"
-)
+# ==================================================
+# X-axis order
+# ==================================================
 
 p_up$Group_time <- factor(p_up$Group_time, levels = x_order)
 
-# ---------------------------
+# ==================================================
 # Plot
-# ---------------------------
+# ==================================================
+
 p_up_plot <- ggplot(
   p_up,
   aes(x = Group_time, y = NPX, group = Group_time)
 ) +
+  
   geom_quasirandom(
     aes(color = Group_color),
     alpha  = 0.7,
     width  = 0.25,
-    stroke = 0,
-    show.legend = FALSE
+    size   = 2
   ) +
+  
   geom_boxplot(
     aes(fill = Group_color),
     color = "black",
     outlier.shape = NA,
     alpha = 0.6
   ) +
+  
   facet_wrap(~ Feature, nrow = 2, scales = "free_y") +
-  scale_color_manual(values = group_colors) +
-  scale_fill_manual(values = group_colors) +
+  
+  # 🔥 USE YOUR COLORS
+  scale_color_manual(values = final_colors) +
+  scale_fill_manual(values = final_colors) +
+  
   theme_classic() +
   theme_hiv() +
   theme(
     axis.text.x = element_text(angle = 75, hjust = 1),
     legend.position = "none"
   ) +
+  
   labs(
     subtitle = "Treatments, HIV subgroups, Elite controllers (baseline/follow-up), and Healthy",
     x = "Group / Timepoint",
     y = "NPX"
   )
 
-print(p_up_plot)
+p_up_plot
 
-# ---------------------------
+# ==================================================
 # Save
-# ---------------------------
+# ==================================================
+
 ggsave(
-  filename = "boxplot_RRM2_CSF3_CD4_CLEC10A_groups.pdf",
+  filename = "boxplot_correct_palette.pdf",
   plot     = p_up_plot,
   path     = "../plots/pdf/boxplot/",
   width    = 16,
@@ -3483,11 +3454,12 @@ ggsave(
 )
 
 ggsave(
-  filename = "boxplot_RRM2_CSF3_CD4_CLEC10A_groups.png",
+  filename = "boxplot_correct_palette.png",
   plot     = p_up_plot,
   path     = "../plots/png/boxplot/",
-  width    = 8,
-  height   = 16
+  width    = 16,
+  height   = 8,
+  dpi      = 300
 )
 ```
 
@@ -3504,11 +3476,7 @@ p_combined <- (p_volcano_ec_hiv_ba + p_volcano_ec_primary_ba + p_volcano_ec_impa
   theme(legend.position = "bottom")
 ```
 
-## Supplementary Figure 6
 
-```{r}
-
-```
 
 # Save Tables
 
