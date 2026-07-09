@@ -15,6 +15,9 @@ library(forcats)
 library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
+library(eulerr)
+library(ggpubr)
+library(ggvenn)
 
 # Specify function
 select <- dplyr::select
@@ -32,73 +35,3883 @@ ggplot2::update_geom_defaults(
 source("../scripts/functions/themes_palettes.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
 ```
 
-# Figure 3
+# Figure 7
 
-## Figure 3A
+## Figure 7A & 7B
 
 ```{r}
+# --------------------------------------------------
+# Define colors
+# --------------------------------------------------
 
+set_colors <- c(
+  "Elite controller" = "#5A588B",
+  "More preserved immunity" = "#C89A1B",
+  "Severely impaired immunity" = "#EABBBB",
+  "Primary HIV infection" = "#4B988F"
+)
+
+# --------------------------------------------------
+# Prepare plot data
+# --------------------------------------------------
+
+plot_df <- metadata |>
+  filter(Disease == "HIV") |>
+  group_by(ID, Subgroup) |>
+  summarise(
+    `CD4 cell count (baseline)`   = mean(`CD4 cell count (baseline)`, na.rm = TRUE),
+    `CD4/CD8 ratio (baseline)`    = mean(`CD4/CD8 ratio (baseline)`, na.rm = TRUE),
+    `CD4 cell count (follow-up)`  = mean(`CD4 cell count (follow-up)`, na.rm = TRUE),
+    `CD4/CD8 ratio (follow-up)`   = mean(`CD4/CD8 ratio (follow-up)`, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    cols = -c(ID, Subgroup),
+    names_to = c("Variable", "Timepoint"),
+    names_pattern = "(.*) \\((baseline|follow-up)\\)",
+    values_to = "Value"
+  ) |>
+  pivot_wider(
+    names_from = Variable,
+    values_from = Value
+  ) |>
+  mutate(
+    Timepoint = recode(
+      Timepoint,
+      "baseline" = "Baseline",
+      "follow-up" = "Follow-up"
+    ),
+    Timepoint = factor(Timepoint, levels = c("Baseline", "Follow-up")),
+
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "Elite controller",
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Primary HIV infection"
+      )
+    ),
+
+    CD4_category = case_when(
+      `CD4 cell count` < 350 ~ "Very low",
+      `CD4 cell count` >= 350 & `CD4 cell count` < 500 ~ "Low",
+      `CD4 cell count` >= 500 ~ "Normal",
+      TRUE ~ NA_character_
+    ),
+
+    CD4CD8_category = case_when(
+      `CD4/CD8 ratio` < 0.5 ~ "Very low",
+      `CD4/CD8 ratio` >= 0.5 & `CD4/CD8 ratio` < 1 ~ "Low",
+      `CD4/CD8 ratio` >= 1 ~ "Normal",
+      TRUE ~ NA_character_
+    ),
+
+    Guideline_concordance = case_when(
+      CD4_category == CD4CD8_category ~ paste0("Concordant: ", CD4_category),
+      CD4_category != CD4CD8_category ~ "Discordant category",
+      TRUE ~ NA_character_
+    ),
+
+    Guideline_concordance = factor(
+      Guideline_concordance,
+      levels = c(
+        "Concordant: Very low",
+        "Concordant: Low",
+        "Concordant: Normal",
+        "Discordant category"
+      )
+    )
+  ) |>
+  filter(
+    !is.na(`CD4 cell count`),
+    !is.na(`CD4/CD8 ratio`),
+    !is.na(Guideline_concordance)
+  )
+
+# --------------------------------------------------
+# Plot
+# --------------------------------------------------
+
+p_cd4_cd8 <- ggplot(
+  plot_df,
+  aes(
+    x = `CD4 cell count`,
+    y = `CD4/CD8 ratio`,
+    color = Subgroup,
+    shape = Guideline_concordance
+  )
+) +
+  geom_hline(yintercept = c(0.5, 1), linetype = "dashed", color = "grey40", linewidth = 0.7) +
+  geom_vline(xintercept = c(350, 500), linetype = "dashed", color = "grey40", linewidth = 0.7) +
+  geom_point(size = 3.2, alpha = 0.85) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.9,
+    inherit.aes = TRUE
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "spearman",
+    color = "black",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  facet_wrap(~ Timepoint) +
+  scale_color_manual(
+    values = set_colors,
+    drop = FALSE
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Concordant: Very low" = 16,
+      "Concordant: Low" = 17,
+      "Concordant: Normal" = 15,
+      "Discordant category" = 4
+    ),
+    drop = FALSE
+  ) +
+  theme_hiv() +
+  labs(
+    x = "CD4 T-cell count",
+    y = "CD4/CD8 T-cell count ratio",
+    color = NULL,
+    shape = "CD4 and CD4/CD8 guideline agreement"
+  ) +
+  theme(
+    legend.position = "right"
+  )
+
+p_cd4_cd8
+
+# --------------------------------------------------
+# Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/scatter", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/scatter", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/scatter/CD4_count_vs_CD4CD8_ratio_baseline_followup_guidelines.pdf",
+  p_cd4_cd8,
+  width = 20,
+  height = 5
+)
+
+ggsave(
+  "../plots/png/scatter/CD4_count_vs_CD4CD8_ratio_baseline_followup_guidelines.png",
+  p_cd4_cd8,
+  width = 20,
+  height = 5,
+  dpi = 300
+)
 ```
 
-## Figure 3B
+## Figure 7C
 
 ```{r}
+# --------------------------------------------------
+# Define colors
+# --------------------------------------------------
 
+set_colors <- c(
+  "More preserved immunity" = "#C89A1B",
+  "Severely impaired immunity" = "#EABBBB",
+  "Primary HIV infection" = "#4B988F"
+)
+
+# --------------------------------------------------
+# Plot Delta CD4 vs Delta CD4/CD8
+# --------------------------------------------------
+
+p_delta_cd4_cd8 <- metadata |>
+  filter(Disease == "HIV") |>
+  filter(Subgroup != "Elite controller") |>
+  group_by(ID, Subgroup) |>
+  summarise(
+    CD4_baseline      = mean(`CD4 cell count (baseline)`, na.rm = TRUE),
+    CD4_followup      = mean(`CD4 cell count (follow-up)`, na.rm = TRUE),
+    CD4CD8_baseline   = mean(`CD4/CD8 ratio (baseline)`, na.rm = TRUE),
+    CD4CD8_followup   = mean(`CD4/CD8 ratio (follow-up)`, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Delta_CD4 = CD4_followup - CD4_baseline,
+    Delta_CD4_CD8 = CD4CD8_followup - CD4CD8_baseline,
+
+    Subgroup = factor(
+      Subgroup,
+      levels = c(
+        "More preserved immunity",
+        "Severely impaired immunity",
+        "Primary HIV infection"
+      )
+    )
+  ) |>
+  filter(
+    !is.na(Delta_CD4),
+    !is.na(Delta_CD4_CD8),
+    is.finite(Delta_CD4),
+    is.finite(Delta_CD4_CD8)
+  ) |>
+  ggplot(
+    aes(
+      x = Delta_CD4,
+      y = Delta_CD4_CD8,
+      color = Subgroup
+    )
+  ) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.9
+  ) +
+  stat_cor(
+    aes(group = 1),
+    method = "spearman",
+    color = "black",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  scale_color_manual(
+    values = set_colors,
+    drop = FALSE
+  ) +
+  theme_hiv() +
+  labs(
+    x = expression(Delta~"CD4 cell count"),
+    y = expression(Delta~"CD4/CD8 ratio")
+  ) +
+  theme(
+    legend.position = "right"
+  )
+
+p_delta_cd4_cd8
+
+# --------------------------------------------------
+# Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/scatter", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/scatter", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/scatter/Delta_CD4_vs_Delta_CD4CD8.pdf",
+  p_delta_cd4_cd8,
+  width = 8,
+  height = 6
+)
+
+ggsave(
+  "../plots/png/scatter/Delta_CD4_vs_Delta_CD4CD8.png",
+  p_delta_cd4_cd8,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
 ```
 
-## Figure 3C
+## Figure 7D
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV")) |>
+  filter(Timepoint != "Follow-up") |>
+  rename(CD4_cell_count_baseline = `CD4 cell count (baseline)`) |>
+  mutate(Age = `Age (baseline)`)
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "CD4_cell_count_baseline", 
+                          case = NULL, 
+                          correct = c("Sex", "Age")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "CD4 T-cell count (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_cd4_baseline <- de_results$de_res
+
+p_cd4_baseline <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_cd4_baseline$layers[[1]]$aes_params$size   <- 3
+p_cd4_baseline$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_baseline$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_baseline
+
+de_res_cd4_baseline |> filter(adj.P.Val < 0.05, logFC > 0) |> nrow()
+de_res_cd4_baseline |> filter(adj.P.Val < 0.05, logFC < -0) |> nrow()
 ```
 
-## Figure 3D
+## Figure 7E
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV")) |>
+  filter(Timepoint != "Follow-up") |>
+  rename(CD4_CD8_ratio_baseline = `CD4/CD8 ratio (baseline)`) |>
+  mutate(Age = `Age (baseline)`)
 
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "CD4_CD8_ratio_baseline", 
+                          case = NULL, 
+                          correct = c("Sex", "Age")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "CD4/CD8 T-cell count ratio (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_cd4_cd8_baseline <- de_results$de_res
+
+p_cd4_cd8_baseline <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_cd4_cd8_baseline$layers[[1]]$aes_params$size   <- 3
+p_cd4_cd8_baseline$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_cd8_baseline$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_cd8_baseline
+
+de_res_cd4_cd8_baseline |> filter(adj.P.Val < 0.05, logFC > 0) |> nrow()
+de_res_cd4_cd8_baseline |> filter(adj.P.Val < 0.05, logFC < -0) |> nrow()
 ```
 
-## Figure 3E
-
 ```{r}
+p_cd4_cd8_combined <- p_cd4_baseline + p_cd4_cd8_baseline + plot_layout(ncol = 2) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "top")
 
+ggsave(
+  "../plots/pdf/volcano/DE_CD4_and_CD4CD8_baseline.pdf",
+  p_cd4_cd8_combined,
+  width = 14,
+  height = 7
+)
 ```
 
-## Figure 3F
+## Figure 7F
 
 ```{r}
+library(ggvenn)
 
+# --------------------------------------------------
+# 1. Define thresholds
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0
+
+# --------------------------------------------------
+# 2. Create sets
+# --------------------------------------------------
+
+venn_sets_all <- list(
+  "CD4 cell count\nbaseline" =
+    de_res_cd4_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique(),
+
+  "CD4/CD8 ratio\nbaseline" =
+    de_res_cd4_cd8_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique()
+)
+
+# --------------------------------------------------
+# 3. Plot (cleaner, more horizontal)
+# --------------------------------------------------
+
+p_baseline <- ggvenn(
+  venn_sets_all,
+  fill_color = c("#4B988F", "#5A588B"),
+  stroke_size = 0.8,
+  set_name_size = 5,
+  text_size = 5
+) +
+  theme_void()
+
+
+p_baseline
+
+ggsave("../plots/png/overlap/venn_cd4_cd4cd8_baseline_all_sig_ggvenn.png",
+       p_baseline, width = 6, height = 6, dpi = 300)
+
+ggsave("../plots/pdf/overlap/venn_cd4_cd4cd8_baseline_all_sig_ggvenn.pdf",
+       p_baseline, width = 6, height = 6)
 ```
 
-## Figure 3G
+### Alternative
 
 ```{r}
+# --------------------------------------------------
+# 1. Define thresholds
+# --------------------------------------------------
 
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0
+
+# --------------------------------------------------
+# 2. Create significant protein sets
+# --------------------------------------------------
+
+venn_sets_all <- list(
+  "CD4 cell count\nbaseline" =
+    de_res_cd4_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique(),
+
+  "CD4/CD8 ratio\nbaseline" =
+    de_res_cd4_cd8_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique()
+)
+
+# Sanity check
+sapply(venn_sets_all, length)
+
+# --------------------------------------------------
+# 3. Fit Euler diagram
+# --------------------------------------------------
+
+fit_all <- euler(venn_sets_all)
+
+# --------------------------------------------------
+# 4. Plot
+# --------------------------------------------------
+
+plot(
+  fit_all,
+  fills = list(
+    fill = c("#4B988F", "#5A588B"),
+    alpha = 0.6
+  ),
+  edges = list(
+    col = "black",
+    lwd = 1
+  ),
+  labels = list(
+    fontsize = 14
+  ),
+  quantities = list(
+    fontsize = 14
+  ),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at baseline"
+)
+
+# --------------------------------------------------
+# 5. Save plots
+# --------------------------------------------------
+
+dir.create("../plots/pdf/overlap", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/overlap", recursive = TRUE, showWarnings = FALSE)
+
+pdf("../plots/pdf/overlap/venn_cd4_cd4cd8_baseline_all_sig.pdf",
+    width = 7, height = 7)
+
+plot(
+  fit_all,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at baseline"
+)
+
+dev.off()
+
+png("../plots/png/overlap/venn_cd4_cd4cd8_baseline_all_sig.png",
+    width = 7, height = 7, units = "in", res = 300)
+
+plot(
+  fit_all,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at baseline"
+)
+
+dev.off()
 ```
 
-# Save plots
-
-## Figure 3
-
 ```{r}
+library(dplyr)
 
+# --------------------------------------------------
+# 1. Thresholds
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0
+
+# --------------------------------------------------
+# 2. Define sets
+# --------------------------------------------------
+
+cd4_set <- de_res_cd4_baseline |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature) |>
+  unique()
+
+cd4_cd8_set <- de_res_cd4_cd8_baseline |>
+  filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+  pull(Feature) |>
+  unique()
+
+# --------------------------------------------------
+# 3. Overlap / non-overlap
+# --------------------------------------------------
+
+overlap_proteins <- intersect(cd4_set, cd4_cd8_set)
+cd4_only         <- setdiff(cd4_set, cd4_cd8_set)
+cd4_cd8_only     <- setdiff(cd4_cd8_set, cd4_set)
+
+# --------------------------------------------------
+# 4. Pretty printing function
+# --------------------------------------------------
+
+print_protein_set <- function(title, vec) {
+  cat("\n====================================\n")
+  cat(title, " (n =", length(vec), ")\n")
+  cat("====================================\n")
+  
+  if (length(vec) == 0) {
+    cat("None\n")
+  } else {
+    cat(paste(sort(vec), collapse = ", "), "\n")
+  }
+}
+
+# --------------------------------------------------
+# 5. Print results
+# --------------------------------------------------
+
+cat("\n\n########## OVERLAP SUMMARY ##########\n")
+
+print_protein_set("CD4 cell count ONLY", cd4_only)
+print_protein_set("CD4/CD8 ratio ONLY", cd4_cd8_only)
+print_protein_set("OVERLAPPING PROTEINS", overlap_proteins)
+
+cat("\n####################################\n\n")
 ```
 
-## Supplementary Figure 3
+## Figure 7G
 
 ```{r}
+# --------------------------------------------------
+# 1. Prepare metadata and data
+# --------------------------------------------------
 
+input_metadata <- metadata |>
+  filter(
+    Timepoint == "Baseline",
+    Disease == "HIV",
+    Subgroup != "Elite controller"
+  ) |>
+  rename(
+    CD4_FU = `CD4 cell count (follow-up)`
+  ) |>
+  filter(!is.na(CD4_FU))
+
+input_data <- data_wide_ml |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# 2. Generate and save reproducible random seeds
+# --------------------------------------------------
+
+set.seed(12345)
+
+n_splits <- 100
+
+split_seeds <- sample(
+  x = 1:1000000,
+  size = n_splits,
+  replace = FALSE
+)
+
+seed_df <- tibble(
+  split = paste0("split_", seq_len(n_splits)),
+  seed = split_seeds
+)
+
+dir.create("../tables/model", recursive = TRUE, showWarnings = FALSE)
+
+write_csv(
+  seed_df,
+  "../tables/model/CD4_FU_baseline_proteomics_100_split_seeds.csv"
+)
+
+# --------------------------------------------------
+# 3. Run 100 models
+# --------------------------------------------------
+
+model_results_cd4_fu <- vector("list", length = n_splits)
+split_objects_cd4_fu <- vector("list", length = n_splits)
+
+for (i in seq_len(n_splits)) {
+
+  current_seed <- split_seeds[i]
+
+  message("Running split ", i, "/", n_splits, " with seed ", current_seed)
+
+  hd_split <- hd_split_data(
+    hd_obj,
+    variable = "CD4_FU",
+    metadata_cols = NULL,
+    ratio = 0.7,
+    seed = current_seed
+  )
+
+  split_objects_cd4_fu[[i]] <- hd_split
+
+  model_results_cd4_fu[[i]] <- hd_model_rreg(
+    dat = hd_split,
+    variable = "CD4_FU",
+    case = NULL,
+    control = NULL,
+    balance_groups = TRUE,
+    cor_threshold = 1,
+    grid_size = 30,
+    cv_sets = 5,
+    mixture = 1,
+    palette = NULL,
+    plot_y_labels = TRUE,
+    verbose = FALSE,
+    plot_title = c("rmse", "rsq", "features", "mixture"),
+    seed = current_seed
+  )
+}
+
+names(model_results_cd4_fu) <- seed_df$split
+names(split_objects_cd4_fu) <- seed_df$split
+
+saveRDS(
+  model_results_cd4_fu,
+  "../tables/model/CD4_FU_baseline_proteomics_100_model_results.rds"
+)
+
+saveRDS(
+  split_objects_cd4_fu,
+  "../tables/model/CD4_FU_baseline_proteomics_100_split_objects.rds"
+)
 ```
 
-# Save Tables
+```{r}
+model_results_cd4_fu <- readRDS("../tables/model/CD4_FU_baseline_proteomics_100_model_results.rds")
+split_objects_cd4_fu <- readRDS("../tables/model/CD4_FU_baseline_proteomics_100_split_objects.rds")
+```
 
 ```{r}
+# --------------------------------------------------
+# 4. Extract feature importance from all splits
+# --------------------------------------------------
 
+feature_importance_cd4_fu <- imap_dfr(
+  model_results_cd4_fu,
+  function(model, split_name) {
+    model$features |>
+      mutate(Split = split_name)
+  }
+)
+
+feature_importance_cd4_fu <- feature_importance_cd4_fu |>
+  filter(Scaled_Importance > 0) |>
+  group_by(Feature) |>
+  mutate(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits
+  ) |>
+  ungroup()
+
+feature_importance_cd4_fu_filtered <- feature_importance_cd4_fu |>
+  filter(n_selected > 5)
+
+top_features_cd4_fu <- feature_importance_cd4_fu_filtered |>
+  group_by(Feature) |>
+  summarise(
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    n_selected = max(n_selected, na.rm = TRUE),
+    selection_frequency = max(selection_frequency, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::slice_max(mean_importance, n = 25)
+
+plot_df_cd4_fu <- feature_importance_cd4_fu_filtered |>
+  semi_join(top_features_cd4_fu, by = "Feature") |>
+  mutate(
+    Feature_label = paste0(Feature, " (n=", n_selected, ")")
+  )
+
+feature_order <- plot_df_cd4_fu |>
+  group_by(Feature_label) |>
+  summarise(
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(median_importance) |>
+  pull(Feature_label)
+
+plot_df_cd4_fu <- plot_df_cd4_fu |>
+  mutate(
+    Feature_label = factor(Feature_label, levels = feature_order)
+  )
+
+p_feature_stability_cd4_fu <- ggplot(
+  plot_df_cd4_fu,
+  aes(
+    x = Feature_label,
+    y = Scaled_Importance
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.shape = NA,
+    fill = "grey85",
+    color = "black"
+  ) +
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.6
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Protein importance stability across 100 splits",
+    subtitle = "Prediction of follow-up CD4 cell count using baseline proteomics",
+    x = "Protein",
+    y = "Scaled feature importance"
+  )
+
+p_feature_stability_cd4_fu
+```
+
+```{r}
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_CD4_FU_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_cd4_fu,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_CD4_FU_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_cd4_fu,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_cd4_fu <- feature_importance_cd4_fu |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+multivariate_lasso_cd4_fu <- plot_df_cd4_fu
+```
+
+```{r}
+write_csv(
+  feature_summary_cd4_fu,
+  "../tables/model/CD4_FU_feature_selection_summary_100_splits.csv"
+)
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Extract and summarise model metrics
+# --------------------------------------------------
+
+metrics_df_cd4_fu <- purrr::imap_dfr(
+  model_results_cd4_fu,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+metrics_long_cd4_fu <- metrics_df_cd4_fu |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+metrics_summary_long_cd4_fu <- metrics_long_cd4_fu |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+metric_split_labels_cd4_fu <- metrics_long_cd4_fu |>
+  left_join(metrics_summary_long_cd4_fu, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+metrics_summary_long_cd4_fu <- metrics_summary_long_cd4_fu |>
+  left_join(metric_split_labels_cd4_fu, by = "Metric")
+
+metrics_summary_long_cd4_fu
+```
+
+```{r}
+write_csv(
+  metrics_df_cd4_fu,
+  "../tables/model/CD4_FU_metrics_per_split.csv"
+)
+
+write_csv(
+  metrics_long_cd4_fu,
+  "../tables/model/CD4_FU_metrics_per_split_long.csv"
+)
+
+write_csv(
+  metrics_summary_long_cd4_fu,
+  "../tables/model/CD4_FU_metrics_summary_long.csv"
+)
+```
+
+```{r}
+# --------------------------------------------------
+# 6. Identify optimal model
+#    - lower RMSE is better
+#    - higher R² is better
+# --------------------------------------------------
+
+metrics_ranked_cd4_fu <- metrics_df_cd4_fu |>
+  mutate(
+    rmse_rank = rank(rmse, ties.method = "average"),
+    rsq_rank  = rank(-rsq, ties.method = "average"),
+    combined_rank = rmse_rank + rsq_rank
+  ) |>
+  arrange(combined_rank, rmse_rank, rsq_rank)
+
+optimal_model_summary_cd4_fu <- metrics_ranked_cd4_fu |>
+  dplyr::slice(1)
+
+optimal_split_cd4_fu <- optimal_model_summary_cd4_fu$Split
+
+optimal_model_cd4_fu <- model_results_cd4_fu[[optimal_split_cd4_fu]]
+optimal_split_object_cd4_fu <- split_objects_cd4_fu[[optimal_split_cd4_fu]]
+
+optimal_model_summary_cd4_fu
+optimal_split_cd4_fu
+optimal_model_cd4_fu
+
+optimal_model_features_cd4_fu <- optimal_model_cd4_fu$features |>
+  filter(Scaled_Importance > 0) |>
+  arrange(desc(Scaled_Importance))
+```
+
+```{r}
+write_csv(
+  metrics_ranked_cd4_fu,
+  "../tables/model/CD4_FU_metrics_ranked_optimal_model.csv"
+)
+
+write_csv(
+  optimal_model_summary_cd4_fu,
+  "../tables/model/CD4_FU_optimal_model_summary.csv"
+)
+
+write_csv(
+  optimal_model_features_cd4_fu,
+  "../tables/model/CD4_FU_optimal_model_features.csv"
+)
+```
+
+## Figure 7H
+
+```{r}
+optimal_model_features_cd4_fu |>
+  # Make a nice bar plot of the top 20 features by Scaled_Importance, colored by Sign
+  slice_max(Scaled_Importance, n = 20) |>
+  ggplot(aes(x = reorder(Feature, Scaled_Importance), y = Scaled_Importance, fill = Sign)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Top 20 features in optimal model for CD4 cell count prediction",
+    x = "Feature",
+    y = "Scaled feature importance"
+  ) +
+  scale_fill_manual(values = c("POS" = "firebrick", "NEG" = "steelblue")) +
+  theme(legend.title = element_blank())
+
+ggsave(
+  filename = "Optimal_model_CD4_FU_top_features.pdf",
+  path = "../plots/pdf/model/",
+  width = 8,
+  height = 6
+)
+```
+
+```{r}
+optimal_model_cd4_fu$comparison_plot
+```
+
+## Figure 7I
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare prediction dataframe
+# --------------------------------------------------
+
+pred_df <- optimal_model_cd4_fu$comparison_plot$data |>
+  mutate(
+    .pred  = as.numeric(.pred),
+    CD4_FU = as.numeric(CD4_FU)
+  ) |>
+  filter(
+    !is.na(.pred),
+    !is.na(CD4_FU),
+    is.finite(.pred),
+    is.finite(CD4_FU)
+  )
+
+# 🔥 Extract R²
+rsq_optimal_cd4 <- optimal_model_summary_cd4_fu$rsq
+
+# --------------------------------------------------
+# 2. Fit linear model
+# --------------------------------------------------
+
+lm_fit <- lm(CD4_FU ~ .pred, data = pred_df)
+
+pred_df <- pred_df |>
+  mutate(
+    fitted_line = predict(lm_fit, newdata = pred_df),
+    distance_to_line = abs(CD4_FU - fitted_line)
+  )
+
+# --------------------------------------------------
+# 3. Define CD4 categories
+# --------------------------------------------------
+
+pred_df <- pred_df |>
+  mutate(
+    observed_category = case_when(
+      CD4_FU < 350 ~ "Very low",
+      CD4_FU < 500 ~ "Low",
+      CD4_FU >= 500 ~ "Normal"
+    ),
+
+    predicted_category = case_when(
+      .pred < 350 ~ "Very low",
+      .pred < 500 ~ "Low",
+      .pred >= 500 ~ "Normal"
+    ),
+
+    prediction_concordance = if_else(
+      observed_category == predicted_category,
+      "Concordant category",
+      "Discordant category"
+    ),
+
+    prediction_concordance = factor(
+      prediction_concordance,
+      levels = c("Concordant category", "Discordant category")
+    )
+  )
+
+# --------------------------------------------------
+# 4. Scatter plot (FIXED)
+# --------------------------------------------------
+
+p_pred_cd4 <- ggplot(
+  pred_df,
+  aes(x = .pred, y = CD4_FU)
+) +
+  
+  # Thresholds
+  geom_hline(
+    yintercept = c(350, 500),
+    linetype = "dashed",
+    color = "grey40",
+    linewidth = 0.7
+  ) +
+  
+  geom_vline(
+    xintercept = c(350, 500),
+    linetype = "dashed",
+    color = "grey40",
+    linewidth = 0.7
+  ) +
+  
+  # Points (mapping moved here 🔥)
+  geom_point(
+    aes(
+      color = distance_to_line,
+      shape = prediction_concordance
+    ),
+    size = 3.5,
+    alpha = 0.9
+  ) +
+  
+  # 🔥 SINGLE regression line
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.9
+  ) +
+  
+  # 🔥 R² annotation
+  annotate(
+    "text",
+    x = quantile(pred_df$.pred, 0.05),
+    y = quantile(pred_df$CD4_FU, 0.95),
+    label = paste0("R² = ", round(rsq_optimal_cd4, 3)),
+    hjust = 0,
+    vjust = 1,
+    size = 5
+  ) +
+  
+  scale_shape_manual(
+    values = c(
+      "Concordant category" = 16,
+      "Discordant category" = 4
+    )
+  ) +
+  
+  scale_color_gradient(
+    low = "grey80",
+    high = "#C03830",
+    name = "Distance to\nregression line"
+  ) +
+  
+  theme_hiv() +
+  labs(
+    title = "Predicted vs observed follow-up CD4 cell count",
+    subtitle = "Shape indicates concordance of predicted vs observed CD4 categories",
+    x = "Predicted CD4 T-cell count at follow-up",
+    y = "Observed CD4 T-cell count at follow-up",
+    shape = "Prediction category"
+  ) +
+  
+  theme(
+    legend.position = "right"
+  )
+
+p_pred_cd4
+
+# --------------------------------------------------
+# 5. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/model/Predicted_vs_observed_CD4_FU_concordance.pdf",
+  p_pred_cd4,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/model/Predicted_vs_observed_CD4_FU_concordance.png",
+  p_pred_cd4,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
+```
+
+## Figure 7J
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare metadata and data
+# --------------------------------------------------
+
+input_metadata <- metadata |>
+  filter(
+    Timepoint == "Baseline",
+    Disease == "HIV",
+    Subgroup != "Elite controller"
+  ) |>
+  rename(
+    CD4_CD8_FU = `CD4/CD8 ratio (follow-up)`
+  ) |>
+  filter(!is.na(CD4_CD8_FU))
+
+input_data <- data_wide_ml |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# 2. Generate and save reproducible random seeds
+# --------------------------------------------------
+
+set.seed(12345)
+
+n_splits <- 100
+
+split_seeds <- sample(
+  x = 1:1000000,
+  size = n_splits,
+  replace = FALSE
+)
+
+seed_df <- tibble(
+  split = paste0("split_", seq_len(n_splits)),
+  seed = split_seeds
+)
+
+dir.create("../tables/model", recursive = TRUE, showWarnings = FALSE)
+
+write_csv(
+  seed_df,
+  "../tables/model/CD4_CD8_FU_baseline_proteomics_100_split_seeds.csv"
+)
+
+# --------------------------------------------------
+# 3. Run 100 models
+# --------------------------------------------------
+
+model_results_cd4_cd8_fu <- vector("list", length = n_splits)
+split_objects_cd4_cd8_fu <- vector("list", length = n_splits)
+
+for (i in seq_len(n_splits)) {
+
+  current_seed <- split_seeds[i]
+
+  message("Running split ", i, "/", n_splits, " with seed ", current_seed)
+
+  hd_split <- hd_split_data(
+    hd_obj,
+    variable = "CD4_CD8_FU",
+    metadata_cols = NULL,
+    ratio = 0.7,
+    seed = current_seed
+  )
+
+  split_objects_cd4_cd8_fu[[i]] <- hd_split
+
+  model_results_cd4_cd8_fu[[i]] <- hd_model_rreg(
+    dat = hd_split,
+    variable = "CD4_CD8_FU",
+    case = NULL,
+    control = NULL,
+    balance_groups = TRUE,
+    cor_threshold = 1,
+    grid_size = 30,
+    cv_sets = 5,
+    mixture = 1,
+    palette = NULL,
+    plot_y_labels = TRUE,
+    verbose = FALSE,
+    plot_title = c("rmse", "rsq", "features", "mixture"),
+    seed = current_seed
+  )
+}
+
+names(model_results_cd4_cd8_fu) <- seed_df$split
+names(split_objects_cd4_cd8_fu) <- seed_df$split
+
+# --------------------------------------------------
+# 4. Save model objects
+# --------------------------------------------------
+
+saveRDS(
+  model_results_cd4_cd8_fu,
+  "../tables/model/CD4_CD8_FU_baseline_proteomics_100_model_results.rds"
+)
+
+saveRDS(
+  split_objects_cd4_cd8_fu,
+  "../tables/model/CD4_CD8_FU_baseline_proteomics_100_split_objects.rds"
+)
+```
+
+```{r}
+model_results_cd4_cd8_fu <- readRDS("../tables/model/CD4_CD8_FU_baseline_proteomics_100_model_results.rds")
+split_objects_cd4_cd8_fu <- readRDS("../tables/model/CD4_CD8_FU_baseline_proteomics_100_split_objects.rds")
+seed_df <- read_csv("../tables/model/CD4_CD8_FU_baseline_proteomics_100_split_seeds.csv")
+n_splits <- 100
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Extract feature importance from all splits
+# --------------------------------------------------
+
+feature_importance_cd4_cd8_fu <- imap_dfr(
+  model_results_cd4_cd8_fu,
+  function(model, split_name) {
+
+    model$features |>
+      mutate(Split = split_name)
+
+  }
+)
+
+# --------------------------------------------------
+# 6. Keep selected features only
+# --------------------------------------------------
+
+feature_importance_cd4_cd8_fu <- feature_importance_cd4_cd8_fu |>
+  filter(Scaled_Importance > 0)
+
+# --------------------------------------------------
+# 7. Add selection frequency
+# --------------------------------------------------
+
+feature_importance_cd4_cd8_fu <- feature_importance_cd4_cd8_fu |>
+  group_by(Feature) |>
+  mutate(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits
+  ) |>
+  ungroup()
+
+# --------------------------------------------------
+# 8. Keep proteins selected more than 5 times
+# --------------------------------------------------
+
+feature_importance_cd4_cd8_fu_filtered <- feature_importance_cd4_cd8_fu |>
+  filter(n_selected > 5)
+
+# --------------------------------------------------
+# 9. Identify top proteins by mean importance
+# --------------------------------------------------
+
+top_features_cd4_cd8_fu <- feature_importance_cd4_cd8_fu_filtered |>
+  group_by(Feature) |>
+  summarise(
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    n_selected = max(n_selected, na.rm = TRUE),
+    selection_frequency = max(selection_frequency, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  slice_max(mean_importance, n = 25)
+
+plot_df_cd4_cd8_fu <- feature_importance_cd4_cd8_fu_filtered |>
+  semi_join(top_features_cd4_cd8_fu, by = "Feature") |>
+  mutate(
+    Feature_label = paste0(Feature, " (n=", n_selected, ")")
+  )
+
+# --------------------------------------------------
+# 10. Order proteins by median importance
+# --------------------------------------------------
+
+feature_order <- plot_df_cd4_cd8_fu |>
+  group_by(Feature_label) |>
+  summarise(
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(median_importance) |>
+  pull(Feature_label)
+
+plot_df_cd4_cd8_fu <- plot_df_cd4_cd8_fu |>
+  mutate(
+    Feature_label = factor(Feature_label, levels = feature_order)
+  )
+
+# --------------------------------------------------
+# 11. Plot feature stability
+# --------------------------------------------------
+
+p_feature_stability_cd4_cd8_fu <- ggplot(
+  plot_df_cd4_cd8_fu,
+  aes(
+    x = Feature_label,
+    y = Scaled_Importance
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.shape = NA,
+    fill = "grey85",
+    color = "black"
+  ) +
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.6
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Protein importance stability across 100 splits",
+    subtitle = "Prediction of follow-up CD4/CD8 ratio using baseline proteomics",
+    x = "Protein",
+    y = "Scaled feature importance"
+  )
+
+p_feature_stability_cd4_cd8_fu
+```
+
+```{r}
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_CD4_CD8_FU_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_cd4_cd8_fu,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_CD4_CD8_FU_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_cd4_cd8_fu,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_cd4_cd8_fu <- feature_importance_cd4_cd8_fu |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+
+multivariate_lasso_cd4_cd8_fu <- plot_df_cd4_cd8_fu
+```
+
+```{r}
+write_csv(
+  feature_summary_cd4_cd8_fu,
+  "../tables/model/CD4_CD8_FU_feature_selection_summary_100_splits.csv"
+)
+```
+
+```{r}
+# --------------------------------------------------
+# 1. Extract metrics per split
+# --------------------------------------------------
+
+metrics_df <- purrr::imap_dfr(
+  model_results_cd4_cd8_fu,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+# --------------------------------------------------
+# 2. Convert to long format
+# --------------------------------------------------
+
+metrics_long <- metrics_df |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+# --------------------------------------------------
+# 3. Summary statistics
+# --------------------------------------------------
+
+metrics_summary_long <- metrics_long |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 4. Identify median/min/max split per metric
+# --------------------------------------------------
+
+metric_split_labels <- metrics_long |>
+  left_join(metrics_summary_long, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+# --------------------------------------------------
+# 5. Combine summary + split labels
+# --------------------------------------------------
+
+metrics_summary_long <- metrics_summary_long |>
+  left_join(metric_split_labels, by = "Metric")
+
+metrics_summary_long
+```
+
+## Figure 7K
+
+```{r}
+# --------------------------------------------------
+# 1. Extract metrics per split
+# --------------------------------------------------
+
+metrics_df <- purrr::imap_dfr(
+  model_results_cd4_cd8_fu,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+# --------------------------------------------------
+# 2. Rank models:
+#    - lower RMSE is better
+#    - higher R² is better
+# --------------------------------------------------
+
+metrics_ranked <- metrics_df |>
+  mutate(
+    rmse_rank = rank(rmse, ties.method = "average"),
+    rsq_rank  = rank(-rsq, ties.method = "average"),
+
+    # Combined rank: lower is better
+    combined_rank = rmse_rank + rsq_rank
+  ) |>
+  arrange(combined_rank, rmse_rank, rsq_rank)
+
+# --------------------------------------------------
+# 3. Optimal model split
+# --------------------------------------------------
+
+optimal_model_summary <- metrics_ranked |>
+  dplyr::slice(1)
+
+optimal_split <- optimal_model_summary$Split
+
+optimal_model_cd4_cd8_fu <- model_results_cd4_cd8_fu[[optimal_split]]
+optimal_split_object <- split_objects_cd4_cd8_fu[[optimal_split]]
+
+optimal_model_summary
+optimal_split
+optimal_model_cd4_cd8_fu
+```
+
+```{r}
+optimal_model_cd4_cd8_fu$features |>
+  filter(Scaled_Importance > 0) |>
+  # Make a nice bar plot of the top 20 features by Scaled_Importance, colored by Sign
+  slice_max(Scaled_Importance, n = 20) |>
+  ggplot(aes(x = reorder(Feature, Scaled_Importance), y = Scaled_Importance, fill = Sign)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Top 20 features in optimal model for CD4/CD8 T-cell count ratio prediction using baseline proteomics",
+    x = "Feature",
+    y = "Scaled feature importance"
+  ) +
+  scale_fill_manual(values = c("POS" = "firebrick", "NEG" = "steelblue")) +
+  theme(legend.title = element_blank())
+
+ggsave(
+  filename = "Optimal_model_CD4_CD8_FU_top_features.pdf",
+  path = "../plots/pdf/model/",
+  width = 8,
+  height = 6
+)
+```
+
+## Figure 7L
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare prediction dataframe
+# --------------------------------------------------
+
+pred_df <- optimal_model_cd4_cd8_fu$comparison_plot$data |>
+  mutate(
+    .pred  = as.numeric(.pred),
+    CD4_CD8_FU = as.numeric(CD4_CD8_FU)
+  ) |>
+  filter(
+    !is.na(.pred),
+    !is.na(CD4_CD8_FU),
+    is.finite(.pred),
+    is.finite(CD4_CD8_FU)
+  )
+
+# Extract R²
+rsq_optimal_cd4_cd8 <- optimal_model_cd4_cd8_fu$metrics$rsq
+
+# --------------------------------------------------
+# 2. Fit linear model
+# --------------------------------------------------
+
+lm_fit <- lm(CD4_CD8_FU ~ .pred, data = pred_df)
+
+pred_df <- pred_df |>
+  mutate(
+    fitted_line = predict(lm_fit, newdata = pred_df),
+    distance_to_line = abs(CD4_CD8_FU - fitted_line)
+  )
+
+# --------------------------------------------------
+# 3. Define CD4/CD8 categories
+# --------------------------------------------------
+
+pred_df <- pred_df |>
+  mutate(
+    observed_category = case_when(
+      CD4_CD8_FU < 0.5 ~ "Very low",
+      CD4_CD8_FU < 1   ~ "Low",
+      CD4_CD8_FU >= 1  ~ "Normal"
+    ),
+
+    predicted_category = case_when(
+      .pred < 0.5 ~ "Very low",
+      .pred < 1   ~ "Low",
+      .pred >= 1  ~ "Normal"
+    ),
+
+    prediction_concordance = if_else(
+      observed_category == predicted_category,
+      "Concordant category",
+      "Discordant category"
+    ),
+
+    prediction_concordance = factor(
+      prediction_concordance,
+      levels = c("Concordant category", "Discordant category")
+    )
+  )
+
+# --------------------------------------------------
+# 4. Plot (FIXED regression line)
+# --------------------------------------------------
+
+p_pred_cd4_cd8 <- ggplot(
+  pred_df,
+  aes(
+    x = .pred,
+    y = CD4_CD8_FU
+  )
+) +
+  
+  # Threshold lines
+  geom_hline(
+    yintercept = c(0.5, 1),
+    linetype = "dashed",
+    color = "grey40",
+    linewidth = 0.7
+  ) +
+  
+  geom_vline(
+    xintercept = c(0.5, 1),
+    linetype = "dashed",
+    color = "grey40",
+    linewidth = 0.7
+  ) +
+  
+  # Points (color + shape applied HERE, not globally)
+  geom_point(
+    aes(
+      color = distance_to_line,
+      shape = prediction_concordance
+    ),
+    size = 3.5,
+    alpha = 0.9
+  ) +
+  
+  # 🔥 SINGLE regression line (FIXED)
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.9
+  ) +
+  
+  # R² annotation
+  annotate(
+    "text",
+    x = quantile(pred_df$.pred, 0.05),
+    y = quantile(pred_df$CD4_CD8_FU, 0.95),
+    label = paste0("R² = ", round(rsq_optimal_cd4_cd8, 3)),
+    hjust = 0,
+    vjust = 1,
+    size = 5
+  ) +
+  
+  scale_shape_manual(
+    values = c(
+      "Concordant category" = 16,
+      "Discordant category" = 4
+    )
+  ) +
+  
+  scale_color_gradient(
+    low = "grey80",
+    high = "#C03830",
+    name = "Distance to\nregression line"
+  ) +
+  
+  theme_hiv() +
+  labs(
+    title = "Predicted vs observed follow-up CD4/CD8 ratio",
+    subtitle = "Shape indicates concordance of predicted vs observed category",
+    x = "Predicted CD4/CD8 ratio (follow-up)",
+    y = "Observed CD4/CD8 ratio (follow-up)",
+    shape = "Prediction category"
+  ) +
+  
+  theme(
+    legend.position = "right"
+  )
+
+p_pred_cd4_cd8
+
+# --------------------------------------------------
+# 5. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/model/Predicted_vs_observed_CD4_CD8_FU_concordance.pdf",
+  p_pred_cd4_cd8,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  "../plots/png/model/Predicted_vs_observed_CD4_CD8_FU_concordance.png",
+  p_pred_cd4_cd8,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+```
+
+```{r}
+# Bar plot of the top 20 features from the best performing cd4_cd8_fu model (optimal_model) based on mean importance
+top_features_optimal_cd4_cd8_fu <- optimal_model$features |>
+  filter(Scaled_Importance > 0) |>
+  slice_max(Scaled_Importance, n = 20)
+
+p_top_features_optimal_cd4_cd8_fu <- ggplot(
+  top_features_optimal_cd4_cd8_fu,
+  aes(x = reorder(Feature, Scaled_Importance), y = Scaled_Importance, fill = Sign)
+) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Top 20 features in the best performing model",
+    x = "Feature",
+    y = "Scaled importance"
+  )
+
+p_top_features_optimal_cd4_cd8_fu
+
+ggsave(filename = "Top_20_features_optimal_model_CD4_cd8_FU.pdf",
+  path = "../plots/pdf/model/",
+  width = 9,
+  height = 7
+)
+```
+
+# Supplementary Figure 16
+
+Predicting delta CD4 and CD4/CD8 ratio
+
+## Figure S16A
+
+```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV")) |>
+  filter(Timepoint != "Follow-up") |>
+  rename(CD4_cell_count_fu = `CD4 cell count (follow-up)`) |>
+  mutate(Age = `Age (baseline)`)
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "CD4_cell_count_fu", 
+                          case = NULL, 
+                          correct = c("Sex", "Age")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "CD4 T-cell count (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_cd4_fu <- de_results$de_res
+
+p_cd4_fu <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_cd4_fu$layers[[1]]$aes_params$size   <- 3
+p_cd4_fu$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_fu$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_fu
+
+de_res_cd4_fu |> filter(adj.P.Val < 0.05, logFC > 0) |> nrow()
+de_res_cd4_fu |> filter(adj.P.Val < 0.05, logFC < -0) |> nrow()
+
+ggsave(
+  "../plots/pdf/volcano/DE_CD4_baseline_fu.pdf",
+  p_cd4_fu,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/volcano/DE_CD4_baseline_fu.png",
+  p_cd4_fu,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
+```
+
+## Figure S16B
+
+```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV")) |>
+  filter(Timepoint != "Follow-up") |>
+  rename(CD4_CD8_ratio_fu = `CD4/CD8 ratio (follow-up)`) |>
+  mutate(Age = `Age (baseline)`)
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "CD4_CD8_ratio_fu", 
+                          case = NULL, 
+                          correct = c("Sex", "Age")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "CD4/CD8 T-cell count ratio (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_cd4_cd8_fu <- de_results$de_res
+
+p_cd4_cd8_fu <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_cd4_cd8_fu$layers[[1]]$aes_params$size   <- 3
+p_cd4_cd8_fu$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_cd8_fu$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_cd8_fu
+
+de_res_cd4_cd8_fu |> filter(adj.P.Val < 0.05, logFC > 0) |> nrow()
+de_res_cd4_cd8_fu |> filter(adj.P.Val < 0.05, logFC < -0) |> nrow()
+
+ggsave(
+  "../plots/pdf/volcano/DE_CD4CD8_ratio_followup.pdf",
+  p_cd4_cd8_fu,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/volcano/DE_CD4CD8_ratio_followup.png",
+  p_cd4_cd8_fu,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
+```
+
+## Figure S16C
+
+```{r}
+# For follow-up
+library(dplyr)
+library(eulerr)
+
+# --------------------------------------------------
+# 1. Define thresholds
+# --------------------------------------------------
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0
+
+# --------------------------------------------------
+# 2. Create significant protein sets
+# --------------------------------------------------
+
+venn_sets_all <- list(
+  "CD4 cell count\nfollow-up" =
+    de_res_cd4_fu |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique(),
+
+  "CD4/CD8 ratio\nfollow-up" =
+    de_res_cd4_cd8_fu |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique()
+)
+
+# Sanity check
+sapply(venn_sets_all, length)
+
+# --------------------------------------------------
+# 3. Fit Euler diagram
+# --------------------------------------------------
+
+fit_all <- euler(venn_sets_all)
+
+# --------------------------------------------------
+# 4. Plot
+# --------------------------------------------------
+
+plot(
+  fit_all,
+  fills = list(
+    fill = c("#4B988F", "#5A588B"),
+    alpha = 0.6
+  ),
+  edges = list(
+    col = "black",
+    lwd = 1
+  ),
+  labels = list(
+    fontsize = 14
+  ),
+  quantities = list(
+    fontsize = 14
+  ),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at follow-up"
+)
+
+# --------------------------------------------------
+# 5. Save plots
+# --------------------------------------------------
+
+dir.create("../plots/pdf/overlap", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/overlap", recursive = TRUE, showWarnings = FALSE)
+
+pdf("../plots/pdf/overlap/venn_cd4_cd4cd8_fu_all_sig.pdf",
+    width = 7, height = 7)
+
+plot(
+  fit_all,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at follow-up"
+)
+
+dev.off()
+
+png("../plots/png/overlap/venn_cd4_cd4cd8_fu_all_sig.png",
+    width = 7, height = 7, units = "in", res = 300)
+
+plot(
+  fit_all,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nCD4 count vs CD4/CD8 ratio at follow-up"
+)
+
+dev.off()
+```
+
+## Figure S16D
+
+```{r}
+# Make boxplots of metrics across splits for rsq and rmse in two separate windows using facet for Metric
+# metrics_long_cd4_fu
+
+p_rmse_cd4 <- metrics_long_cd4_fu |>
+  filter(Metric == "rmse") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (RMSE) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rsq_cd4 <- metrics_long_cd4_fu |>
+  filter(Metric == "rsq") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (R^2) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rmse_cd4 + p_rsq_cd4 + plot_layout(ncol = 2)
+ggsave(
+  filename = "Model_performance_metrics_CD4_FU_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  width = 9,
+  height = 7
+)
+```
+
+## Figure S16E
+
+```{r}
+data_wide |>
+  filter(DAid %in% input_metadata$DAid) |>
+  select(DAid, LEP, PRL, CD5) |>
+  left_join(input_metadata %>% select(DAid, CD4_FU, Subgroup), by = "DAid") |>
+  pivot_longer(cols = c(LEP, PRL, CD5), names_to = "Protein", values_to = "NPX") |>
+  ggplot(aes(x = CD4_FU, y = NPX)) +
+  geom_point(aes(color = Subgroup)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  # Add correlation coefficient to each facet
+   stat_cor(
+    method = "spearman",
+    color = "black",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  # Define colors for Subgroups
+  scale_color_manual(
+    values = c(
+      "More preserved immunity"   = "#d95f02",
+       "Severely impaired immunity"= "#7570b3",
+       "Primary HIV infection"     = "#e7298a"
+    )
+  ) +
+  theme_hiv() +
+  labs(
+    title = "Baseline levels of LEP, PRL, and CD5 vs follow-up CD4 cell count",
+    x = "CD4 cell count at follow-up",
+    y = "Baseline NPX level"
+  ) +
+  facet_wrap(~ Protein) +
+  theme(legend.title = element_blank()) +
+  # legend at top
+  theme(legend.position = "top")
+
+ggsave(
+  filename = "Baseline_CD4_FU_examples.pdf",
+  path = "../plots/pdf/model/",
+  width = 14,
+  height = 7
+)
+```
+
+## Figure S16F
+
+```{r}
+# --------------------------------------------------
+# 5. Extract and summarise model metrics
+# --------------------------------------------------
+
+metrics_df_cd4_cd8_fu <- purrr::imap_dfr(
+  model_results_cd4_cd8_fu,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+metrics_long_cd4_cd8_fu <- metrics_df_cd4_cd8_fu |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+metrics_summary_long_cd4_cd8_fu <- metrics_long_cd4_cd8_fu |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+metric_split_labels_cd4_cd8_fu <- metrics_long_cd4_cd8_fu |>
+  left_join(metrics_summary_long_cd4_fu, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+metrics_summary_long_cd4_cd8_fu <- metrics_summary_long_cd4_cd8_fu |>
+  left_join(metric_split_labels_cd4_cd8_fu, by = "Metric")
+
+metrics_summary_long_cd4_cd8_fu
+
+write_csv(
+  metrics_df_cd4_cd8_fu,
+  "../tables/model/CD4_cd8_FU_metrics_per_split.csv"
+)
+
+write_csv(
+  metrics_long_cd4_cd8_fu,
+  "../tables/model/CD4_cd8_FU_metrics_per_split_long.csv"
+)
+
+write_csv(
+  metrics_summary_long_cd4_cd8_fu,
+  "../tables/model/CD4_cd8_FU_metrics_summary_long.csv"
+)
+```
+
+```{r}
+# Make boxplots of metrics across splits for rsq and rmse in two separate windows using facet for Metric
+# metrics_long_cd4_fu
+
+p_rmse_cd4_cd8 <- metrics_long_cd4_cd8_fu |>
+  filter(Metric == "rmse") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (RMSE) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rsq_cd4_cd8 <- metrics_long_cd4_cd8_fu |>
+  filter(Metric == "rsq") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (R^2) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rmse_cd4_cd8 + p_rsq_cd4_cd8 + plot_layout(ncol = 2)
+ggsave(
+  filename = "Model_performance_metrics_CD4_cd8_FU_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  width = 9,
+  height = 7
+)
+```
+
+## Figure S16G
+
+```{r}
+data_wide |>
+  filter(DAid %in% input_metadata$DAid) |>
+  select(DAid, SLAMF7, FCRL5, CD79B) |>
+  left_join(input_metadata %>% select(DAid, `CD4/CD8 ratio (follow-up)`, Subgroup), by = "DAid") |>
+  pivot_longer(cols = c(SLAMF7, FCRL5, CD79B), names_to = "Protein", values_to = "NPX") |>
+  ggplot(aes(x = `CD4/CD8 ratio (follow-up)`, y = NPX)) +
+  geom_point(aes(color = Subgroup)) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  # Add correlation coefficient to each facet
+   stat_cor(
+    method = "spearman",
+    color = "black",
+    label.x.npc = "left",
+    label.y.npc = "top",
+    size = 4
+  ) +
+  # Define colors for Subgroups
+  scale_color_manual(
+    values = c(
+      "More preserved immunity"   = "#d95f02",
+       "Severely impaired immunity"= "#7570b3",
+       "Primary HIV infection"     = "#e7298a"
+    )
+  ) +
+  theme_hiv() +
+  labs(
+    title = "Baseline levels of SLAMF7, FCRL5, and CD79B vs follow-up CD4 cell count",
+    x = "CD4 T-cell count at follow-up",
+    y = "Baseline NPX level"
+  ) +
+  facet_wrap(~ Protein) +
+  theme(legend.title = element_blank()) +
+  # legend at top
+  theme(legend.position = "top")
+
+ggsave(
+  filename = "Baseline_CD4_CD8_FU_examples.pdf",
+  path = "../plots/pdf/model/",
+  width = 14,
+  height = 7
+)
+```
+
+# Supplementary Figure 17
+
+## Figure S17A
+
+```{r}
+# ==================================================
+# 1. Prepare metadata (compute Δ CD4)
+# ==================================================
+
+input_metadata <- metadata |>
+  filter(Disease == "HIV") |>
+  filter(Timepoint != "Follow-up") |>
+  mutate(
+    delta_cd4 =
+      `CD4 cell count (baseline)` -
+      `CD4 cell count (follow-up)`,
+    
+    Age = `Age (baseline)`
+  ) |>
+  select(DAid, ID, delta_cd4, Sex, Age)
+
+# --------------------------------------------------
+# 2. Prepare data
+# --------------------------------------------------
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+# --------------------------------------------------
+# 3. Initialize HDAnalyzeR object
+# --------------------------------------------------
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# 4. Differential expression (continuous Δ CD4)
+# --------------------------------------------------
+
+de_results <- hd_de_limma(
+  hd_obj,
+  variable = "delta_cd4",
+  case = NULL,
+  correct = c("Sex", "Age")
+) |>
+  hd_plot_volcano(
+    pval_lim = 0.05,
+    logfc_lim = 0,
+    top_up_prot = 20,
+    top_down_prot = 20,
+    title = "Delta CD4 T-cell count",
+    report_nproteins = FALSE,
+    user_defined_proteins = NULL
+  )
+
+# --------------------------------------------------
+# 5. Extract results
+# --------------------------------------------------
+
+de_res_delta_cd4_baseline <- de_results$de_res
+
+head(de_res_delta_cd4_baseline)
+
+# --------------------------------------------------
+# 6. Plot
+# --------------------------------------------------
+
+p_delta_cd4 <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+# Improve point aesthetics
+p_delta_cd4$layers[[1]]$aes_params$size   <- 3
+p_delta_cd4$layers[[1]]$aes_params$alpha  <- 0.7
+p_delta_cd4$layers[[1]]$aes_params$stroke <- 0
+
+p_delta_cd4
+
+# --------------------------------------------------
+# 7. Summary counts
+# --------------------------------------------------
+
+de_res_delta_cd4_baseline |>
+  filter(adj.P.Val < 0.05, logFC > 0) |>
+  nrow()
+
+de_res_delta_cd4_baseline |>
+  filter(adj.P.Val < 0.05, logFC < 0) |>
+  nrow()
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/volcano", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/volcano", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/volcano/DE_Delta_CD4.pdf",
+  p_delta_cd4,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/volcano/DE_Delta_CD4.png",
+  p_delta_cd4,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
+```
+
+## Figure S17B
+
+```{r}
+input_metadata <- metadata |>
+  filter(Disease %in% c("HIV")) |>
+  filter(Timepoint != "Follow-up") |>
+  rename(delta_cd4cd8 = `Delta CD4/CD8`) |>
+  mutate(Age = `Age (baseline)`)
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(hd_obj, 
+                          variable = "delta_cd4cd8", 
+                          case = NULL, 
+                          correct = c("Sex", "Age")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "Delta CD4/CD8 T-cell ratio",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+de_res_delta_cd4cd8_baseline <- de_results$de_res
+
+p_delta_cd4cd8 <- de_results$volcano_plot +
+  theme_hiv() +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    )
+  ) +
+  labs(
+    y = expression(-log[10]("adjusted p-value")),
+    x = expression(log[2]("fold change"))
+  )
+
+p_delta_cd4cd8$layers[[1]]$aes_params$size   <- 3
+p_delta_cd4cd8$layers[[1]]$aes_params$alpha  <- 0.7
+p_delta_cd4cd8$layers[[1]]$aes_params$stroke <- 0
+
+p_delta_cd4cd8
+
+de_res_delta_cd4cd8_baseline |> filter(adj.P.Val < 0.05, logFC > 0) |> nrow()
+de_res_delta_cd4cd8_baseline |> filter(adj.P.Val < 0.05, logFC < -0) |> nrow()
+
+ggsave(
+  "../plots/pdf/volcano/DE_Delta_CD4CD8.pdf",
+  p_delta_cd4cd8,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "../plots/png/volcano/DE_Delta_CD4CD8.png",
+  p_delta_cd4cd8,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
+```
+
+## Figure S17C
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(eulerr)
+
+# ==================================================
+# 1. Define thresholds
+# ==================================================
+
+fdr_cutoff   <- 0.05
+logfc_cutoff <- 0
+
+# ==================================================
+# 2. Create significant protein sets (Δ BASELINE)
+# ==================================================
+
+venn_sets_delta <- list(
+  
+  "Δ CD4\n(baseline)" =
+    de_res_delta_cd4_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique(),
+  
+  "Δ CD4/CD8\n(baseline)" =
+    de_res_delta_cd4cd8_baseline |>
+    filter(adj.P.Val < fdr_cutoff, abs(logFC) > logfc_cutoff) |>
+    pull(Feature) |>
+    unique()
+)
+
+# --------------------------------------------------
+# Sanity check
+# --------------------------------------------------
+
+sapply(venn_sets_delta, length)
+
+# ==================================================
+# 3. Fit Euler diagram
+# ==================================================
+
+fit_delta <- euler(venn_sets_delta)
+
+# ==================================================
+# 4. Plot
+# ==================================================
+
+plot(
+  fit_delta,
+  fills = list(
+    fill = c("#4B988F", "#5A588B"),  # keep your HIV palette
+    alpha = 0.6
+  ),
+  edges = list(
+    col = "black",
+    lwd = 1
+  ),
+  labels = list(
+    fontsize = 14
+  ),
+  quantities = list(
+    fontsize = 14
+  ),
+  main = "Overlap of significant proteins\nΔ CD4 vs Δ CD4/CD8 (baseline)"
+)
+
+# ==================================================
+# 5. Save plots
+# ==================================================
+
+dir.create("../plots/pdf/overlap", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/overlap", recursive = TRUE, showWarnings = FALSE)
+
+pdf(
+  "../plots/pdf/overlap/venn_delta_cd4_cd4cd8_baseline.pdf",
+  width = 7,
+  height = 7
+)
+
+plot(
+  fit_delta,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nΔ CD4 vs Δ CD4/CD8 (baseline)"
+)
+
+dev.off()
+
+png(
+  "../plots/png/overlap/venn_delta_cd4_cd4cd8_baseline.png",
+  width = 7,
+  height = 7,
+  units = "in",
+  res = 300
+)
+
+plot(
+  fit_delta,
+  fills = list(fill = c("#4B988F", "#5A588B"), alpha = 0.6),
+  edges = list(col = "black", lwd = 1),
+  labels = list(fontsize = 14),
+  quantities = list(fontsize = 14),
+  main = "Overlap of significant proteins\nΔ CD4 vs Δ CD4/CD8 (baseline)"
+)
+
+dev.off()
+```
+
+## Figure S17D
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare metadata and data
+# --------------------------------------------------
+
+input_metadata <- metadata |>
+  filter(
+    Timepoint == "Baseline",
+    Disease == "HIV",
+    Subgroup != "Elite controller"
+  ) |>
+  mutate(
+    Delta_CD4 = `CD4 cell count (follow-up)` - `CD4 cell count (baseline)`
+  ) |>
+  filter(!is.na(Delta_CD4))
+
+input_data <- data_wide_ml |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# 2. Generate and save reproducible random seeds
+# --------------------------------------------------
+
+set.seed(12345)
+
+n_splits <- 100
+
+split_seeds <- sample(
+  x = 1:1000000,
+  size = n_splits,
+  replace = FALSE
+)
+
+seed_df <- tibble(
+  split = paste0("split_", seq_len(n_splits)),
+  seed = split_seeds
+)
+
+dir.create("../tables/model", recursive = TRUE, showWarnings = FALSE)
+
+write_csv(
+  seed_df,
+  "../tables/model/Delta_CD4_CD8_baseline_proteomics_100_split_seeds.csv"
+)
+
+# --------------------------------------------------
+# 3. Run 100 models
+# --------------------------------------------------
+
+model_results_delta_cd4_cd8 <- vector("list", length = n_splits)
+split_objects_delta_cd4_cd8 <- vector("list", length = n_splits)
+
+for (i in seq_len(n_splits)) {
+
+  current_seed <- split_seeds[i]
+
+  message("Running split ", i, "/", n_splits, " with seed ", current_seed)
+
+  hd_split <- hd_split_data(
+    hd_obj,
+    variable = "Delta_CD4",
+    metadata_cols = NULL,
+    ratio = 0.7,
+    seed = current_seed
+  )
+
+  split_objects_delta_cd4[[i]] <- hd_split
+
+  model_results_delta_cd4[[i]] <- hd_model_rreg(
+    dat = hd_split,
+    variable = "Delta_CD4",
+    case = NULL,
+    control = NULL,
+    balance_groups = TRUE,
+    cor_threshold = 1,
+    grid_size = 30,
+    cv_sets = 5,
+    mixture = 1,
+    palette = NULL,
+    plot_y_labels = TRUE,
+    verbose = FALSE,
+    plot_title = c("rmse", "rsq", "features", "mixture"),
+    seed = current_seed
+  )
+}
+
+names(model_results_delta_cd4) <- seed_df$split
+names(split_objects_delta_cd4) <- seed_df$split
+
+saveRDS(
+  model_results_delta_cd4,
+  "../tables/model/Delta_CD4_baseline_proteomics_100_model_results.rds"
+)
+
+saveRDS(
+  split_objects_delta_cd4,
+  "../tables/model/Delta_CD4_baseline_proteomics_100_split_objects.rds"
+)
+```
+
+```{r}
+model_results_delta_cd4 <- readRDS("../tables/model/Delta_CD4_baseline_proteomics_100_model_results.rds")
+split_objects_delta_cd4 <- readRDS("../tables/model/Delta_CD4_baseline_proteomics_100_split_objects.rds")
+```
+
+```{r}
+# --------------------------------------------------
+# 4. Feature-selection stability
+# --------------------------------------------------
+
+feature_importance_delta_cd4 <- imap_dfr(
+  model_results_delta_cd4,
+  function(model, split_name) {
+    model$features |>
+      mutate(Split = split_name)
+  }
+)
+
+feature_importance_delta_cd4 <- feature_importance_delta_cd4 |>
+  filter(Scaled_Importance > 0) |>
+  group_by(Feature) |>
+  mutate(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits
+  ) |>
+  ungroup()
+
+feature_importance_delta_cd4_filtered <- feature_importance_delta_cd4 |>
+  filter(n_selected > 5)
+
+top_features_delta_cd4 <- feature_importance_delta_cd4_filtered |>
+  group_by(Feature) |>
+  summarise(
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    n_selected = max(n_selected, na.rm = TRUE),
+    selection_frequency = max(selection_frequency, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::slice_max(mean_importance, n = 25)
+
+plot_df_delta_cd4 <- feature_importance_delta_cd4_filtered |>
+  semi_join(top_features_delta_cd4, by = "Feature") |>
+  mutate(
+    Feature_label = paste0(Feature, " (n=", n_selected, ")")
+  )
+
+feature_order <- plot_df_delta_cd4 |>
+  group_by(Feature_label) |>
+  summarise(
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(median_importance) |>
+  pull(Feature_label)
+
+plot_df_delta_cd4 <- plot_df_delta_cd4 |>
+  mutate(
+    Feature_label = factor(Feature_label, levels = feature_order)
+  )
+
+p_feature_stability_delta_cd4 <- ggplot(
+  plot_df_delta_cd4,
+  aes(
+    x = Feature_label,
+    y = Scaled_Importance
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.shape = NA,
+    fill = "grey85",
+    color = "black"
+  ) +
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.6
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Protein importance stability across 100 splits",
+    subtitle = "Prediction of ΔCD4 ratio using baseline proteomics",
+    x = "Protein",
+    y = "Scaled feature importance"
+  )
+
+p_feature_stability_delta_cd4
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Save feature plot and summary
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_delta_cd4,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_delta_cd4,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_delta_cd4 <- feature_importance_delta_cd4 |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+write_csv(
+  feature_summary_delta_cd4,
+  "../tables/model/Delta_CD4_feature_selection_summary_100_splits.csv"
+)
+
+multivariate_lasso_delta_cd4 <- plot_df_delta_cd4
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Save feature plot and summary
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_delta_cd4,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_delta_cd4,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_delta_cd4 <- feature_importance_delta_cd4 |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+write_csv(
+  feature_summary_delta_cd4,
+  "../tables/model/Delta_CD4_feature_selection_summary_100_splits.csv"
+)
+
+multivariate_lasso_delta_cd4 <- plot_df_delta_cd4
+```
+
+```{r}
+# --------------------------------------------------
+# 6. Metrics summary
+# --------------------------------------------------
+
+metrics_df_delta_cd4 <- purrr::imap_dfr(
+  model_results_delta_cd4,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+metrics_long_delta_cd4 <- metrics_df_delta_cd4 |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+metrics_summary_long_delta_cd4 <- metrics_long_delta_cd4 |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+metric_split_labels_delta_cd4 <- metrics_long_delta_cd4 |>
+  left_join(metrics_summary_long_delta_cd4_cd8, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+metrics_summary_long_delta_cd4 <- metrics_summary_long_delta_cd4 |>
+  left_join(metric_split_labels_delta_cd4, by = "Metric")
+
+metrics_summary_long_delta_cd4
+```
+
+```{r}
+write_csv(
+  metrics_df_delta_cd4,
+  "../tables/model/Delta_CD4_metrics_per_split.csv"
+)
+
+write_csv(
+  metrics_long_delta_cd4,
+  "../tables/model/Delta_CD4_metrics_per_split_long.csv"
+)
+
+write_csv(
+  metrics_summary_long_delta_cd4,
+  "../tables/model/Delta_CD4_metrics_summary_long.csv"
+)
+```
+
+```{r}
+# --------------------------------------------------
+# 7. Identify optimal model
+# --------------------------------------------------
+
+metrics_ranked_delta_cd4 <- metrics_df_delta_cd4 |>
+  mutate(
+    rmse_rank = rank(rmse, ties.method = "average"),
+    rsq_rank  = rank(-rsq, ties.method = "average"),
+    combined_rank = rmse_rank + rsq_rank
+  ) |>
+  arrange(combined_rank, rmse_rank, rsq_rank)
+
+optimal_model_summary_delta_cd4 <- metrics_ranked_delta_cd4 |>
+  dplyr::slice(1)
+
+optimal_split_delta_cd4 <- optimal_model_summary_delta_cd4$Split
+
+optimal_model_delta_cd4 <- model_results_delta_cd4[[optimal_split_delta_cd4]]
+optimal_split_object_delta_cd4 <- split_objects_delta_cd4_cd8[[optimal_split_delta_cd4]]
+
+optimal_model_summary_delta_cd4
+optimal_split_delta_cd4
+optimal_model_delta_cd4
+
+optimal_model_features_delta_cd4 <- optimal_model_delta_cd4$features |>
+  filter(Scaled_Importance > 0) |>
+  arrange(desc(Scaled_Importance))
+```
+
+```{r}
+write_csv(
+  metrics_ranked_delta_cd4,
+  "../tables/model/Delta_CD4_metrics_ranked_optimal_model.csv"
+)
+
+write_csv(
+  optimal_model_summary_delta_cd4,
+  "../tables/model/Delta_CD4_optimal_model_summary.csv"
+)
+
+write_csv(
+  optimal_model_features_delta_cd4,
+  "../tables/model/Delta_CD4_optimal_model_features.csv"
+)
+```
+
+## Figure S17E
+
+```{r}
+optimal_model_features_delta_cd4 |>
+  filter(Scaled_Importance > 0) |>
+  # Make a nice bar plot of the top 20 features by Scaled_Importance, colored by Sign
+  slice_max(Scaled_Importance, n = 20) |>
+  ggplot(aes(x = reorder(Feature, Scaled_Importance), y = Scaled_Importance, fill = Sign)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Top 20 features in optimal model for delta CD4 T-cell count ratio prediction using baseline proteomics",
+    x = "Feature",
+    y = "Scaled feature importance"
+  ) +
+  scale_fill_manual(values = c("POS" = "firebrick", "NEG" = "steelblue")) +
+  theme(legend.title = element_blank())
+
+ggsave(
+  filename = "Optimal_model_delta_CD4_FU_top_features.pdf",
+  path = "../plots/pdf/model/",
+  width = 10,
+  height = 8
+)
+```
+
+## Figure S17F
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare prediction dataframe
+# --------------------------------------------------
+
+pred_df <- optimal_model_delta_cd4$comparison_plot$data |>
+  mutate(
+    .pred  = as.numeric(.pred),
+    Delta_CD4 = as.numeric(Delta_CD4)
+  ) |>
+  filter(
+    !is.na(.pred),
+    !is.na(Delta_CD4),
+    is.finite(.pred),
+    is.finite(Delta_CD4)
+  )
+
+# --------------------------------------------------
+# 2. Fit linear model and calculate distance to line
+# --------------------------------------------------
+
+lm_fit <- lm(Delta_CD4 ~ .pred, data = pred_df)
+
+# 🔥 Compute R² (robust way)
+rsq_optimal_delta_cd4 <- summary(lm_fit)$r.squared
+
+pred_df <- pred_df |>
+  mutate(
+    fitted_line = predict(lm_fit, newdata = pred_df),
+    distance_to_line = abs(Delta_CD4 - fitted_line)
+  )
+
+# --------------------------------------------------
+# 3. Scatter plot (UPDATED)
+# --------------------------------------------------
+
+p_pred_delta_cd4 <- ggplot(
+  pred_df,
+  aes(
+    x = .pred,
+    y = Delta_CD4,
+    color = distance_to_line
+  )
+) +
+  geom_point(
+    size = 3.5,
+    alpha = 0.9
+  ) +
+  
+  # 🔥 SINGLE regression line (no duplication)
+  geom_abline(
+    slope = coef(lm_fit)[2],
+    intercept = coef(lm_fit)[1],
+    color = "black",
+    linewidth = 1
+  ) +
+  
+  # 🔥 R² annotation instead of stat_cor
+  annotate(
+    "text",
+    x = min(pred_df$.pred, na.rm = TRUE),
+    y = max(pred_df$Delta_CD4, na.rm = TRUE),
+    label = paste0("R² = ", round(rsq_optimal_delta_cd4, 3)),
+    hjust = 0,
+    vjust = 1,
+    size = 5
+  ) +
+  
+  scale_color_gradient(
+    low = "grey80",
+    high = "#C03830",
+    name = "Distance to\nregression line"
+  ) +
+  
+  theme_hiv() +
+  labs(
+    title = "Predicted vs observed ΔCD4 ratio",
+    subtitle = "Baseline proteomics prediction",
+    x = "Predicted ΔCD4",
+    y = "Observed ΔCD4"
+  ) +
+  theme(
+    legend.position = "right"
+  )
+
+p_pred_delta_cd4
+
+# --------------------------------------------------
+# 4. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/model/Predicted_vs_observed_delta_CD4_R2.pdf",
+  p_pred_delta_cd4,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  "../plots/png/model/Predicted_vs_observed_delta_CD4_R2.png",
+  p_pred_delta_cd4,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+```
+
+## Figure S17G
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare metadata and data
+# --------------------------------------------------
+
+input_metadata <- metadata |>
+  filter(
+    Timepoint == "Baseline",
+    Disease == "HIV",
+    Subgroup != "Elite controller"
+  ) |>
+  mutate(
+    Delta_CD4_CD8 = `CD4/CD8 ratio (follow-up)` - `CD4/CD8 ratio (baseline)`
+  ) |>
+  filter(!is.na(Delta_CD4_CD8))
+
+input_data <- data_wide_ml |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+# --------------------------------------------------
+# 2. Generate and save reproducible random seeds
+# --------------------------------------------------
+
+set.seed(12345)
+
+n_splits <- 100
+
+split_seeds <- sample(
+  x = 1:1000000,
+  size = n_splits,
+  replace = FALSE
+)
+
+seed_df <- tibble(
+  split = paste0("split_", seq_len(n_splits)),
+  seed = split_seeds
+)
+
+dir.create("../tables/model", recursive = TRUE, showWarnings = FALSE)
+
+write_csv(
+  seed_df,
+  "../tables/model/Delta_CD4_CD8_baseline_proteomics_100_split_seeds.csv"
+)
+
+# --------------------------------------------------
+# 3. Run 100 models
+# --------------------------------------------------
+
+model_results_delta_cd4_cd8 <- vector("list", length = n_splits)
+split_objects_delta_cd4_cd8 <- vector("list", length = n_splits)
+
+for (i in seq_len(n_splits)) {
+
+  current_seed <- split_seeds[i]
+
+  message("Running split ", i, "/", n_splits, " with seed ", current_seed)
+
+  hd_split <- hd_split_data(
+    hd_obj,
+    variable = "Delta_CD4_CD8",
+    metadata_cols = NULL,
+    ratio = 0.7,
+    seed = current_seed
+  )
+
+  split_objects_delta_cd4_cd8[[i]] <- hd_split
+
+  model_results_delta_cd4_cd8[[i]] <- hd_model_rreg(
+    dat = hd_split,
+    variable = "Delta_CD4_CD8",
+    case = NULL,
+    control = NULL,
+    balance_groups = TRUE,
+    cor_threshold = 1,
+    grid_size = 30,
+    cv_sets = 5,
+    mixture = 1,
+    palette = NULL,
+    plot_y_labels = TRUE,
+    verbose = FALSE,
+    plot_title = c("rmse", "rsq", "features", "mixture"),
+    seed = current_seed
+  )
+}
+
+names(model_results_delta_cd4_cd8) <- seed_df$split
+names(split_objects_delta_cd4_cd8) <- seed_df$split
+
+saveRDS(
+  model_results_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_baseline_proteomics_100_model_results.rds"
+)
+
+saveRDS(
+  split_objects_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_baseline_proteomics_100_split_objects.rds"
+)
+```
+
+```{r}
+model_results_delta_cd4_cd8 <- readRDS("../tables/model/Delta_CD4_CD8_baseline_proteomics_100_model_results.rds")
+split_objects_delta_cd4_cd8 <- readRDS("../tables/model/Delta_CD4_CD8_baseline_proteomics_100_split_objects.rds")
+```
+
+```{r}
+# --------------------------------------------------
+# 4. Feature-selection stability
+# --------------------------------------------------
+
+feature_importance_delta_cd4_cd8 <- imap_dfr(
+  model_results_delta_cd4_cd8,
+  function(model, split_name) {
+    model$features |>
+      mutate(Split = split_name)
+  }
+)
+
+feature_importance_delta_cd4_cd8 <- feature_importance_delta_cd4_cd8 |>
+  filter(Scaled_Importance > 0) |>
+  group_by(Feature) |>
+  mutate(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits
+  ) |>
+  ungroup()
+
+feature_importance_delta_cd4_cd8_filtered <- feature_importance_delta_cd4_cd8 |>
+  filter(n_selected > 5)
+
+top_features_delta_cd4_cd8 <- feature_importance_delta_cd4_cd8_filtered |>
+  group_by(Feature) |>
+  summarise(
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    n_selected = max(n_selected, na.rm = TRUE),
+    selection_frequency = max(selection_frequency, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::slice_max(mean_importance, n = 25)
+
+plot_df_delta_cd4_cd8 <- feature_importance_delta_cd4_cd8_filtered |>
+  semi_join(top_features_delta_cd4_cd8, by = "Feature") |>
+  mutate(
+    Feature_label = paste0(Feature, " (n=", n_selected, ")")
+  )
+
+feature_order <- plot_df_delta_cd4_cd8 |>
+  group_by(Feature_label) |>
+  summarise(
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(median_importance) |>
+  pull(Feature_label)
+
+plot_df_delta_cd4_cd8 <- plot_df_delta_cd4_cd8 |>
+  mutate(
+    Feature_label = factor(Feature_label, levels = feature_order)
+  )
+
+p_feature_stability_delta_cd4_cd8 <- ggplot(
+  plot_df_delta_cd4_cd8,
+  aes(
+    x = Feature_label,
+    y = Scaled_Importance
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.shape = NA,
+    fill = "grey85",
+    color = "black"
+  ) +
+  geom_jitter(
+    width = 0.15,
+    size = 1,
+    alpha = 0.6
+  ) +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Protein importance stability across 100 splits",
+    subtitle = "Prediction of ΔCD4/CD8 ratio using baseline proteomics",
+    x = "Protein",
+    y = "Scaled feature importance"
+  )
+
+p_feature_stability_delta_cd4_cd8
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Save feature plot and summary
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_CD8_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_delta_cd4_cd8,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_CD8_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_delta_cd4_cd8,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_delta_cd4_cd8 <- feature_importance_delta_cd4_cd8 |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+write_csv(
+  feature_summary_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_feature_selection_summary_100_splits.csv"
+)
+
+multivariate_lasso_delta_cd4_cd8 <- plot_df_delta_cd4_cd8
+```
+
+```{r}
+# --------------------------------------------------
+# 5. Save feature plot and summary
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_CD8_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  plot = p_feature_stability_delta_cd4_cd8,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  filename = "Feature_importance_stability_Delta_CD4_CD8_100_splits.png",
+  path = "../plots/png/model/",
+  plot = p_feature_stability_delta_cd4_cd8,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
+feature_summary_delta_cd4_cd8 <- feature_importance_delta_cd4_cd8 |>
+  group_by(Feature) |>
+  summarise(
+    n_selected = n_distinct(Split),
+    selection_frequency = n_selected / n_splits,
+    mean_importance = mean(Scaled_Importance, na.rm = TRUE),
+    median_importance = median(Scaled_Importance, na.rm = TRUE),
+    max_importance = max(Scaled_Importance, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n_selected), desc(mean_importance))
+
+write_csv(
+  feature_summary_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_feature_selection_summary_100_splits.csv"
+)
+
+multivariate_lasso_delta_cd4_cd8 <- plot_df_delta_cd4_cd8
+```
+
+```{r}
+# --------------------------------------------------
+# 6. Metrics summary
+# --------------------------------------------------
+
+metrics_df_delta_cd4_cd8 <- purrr::imap_dfr(
+  model_results_delta_cd4_cd8,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+metrics_long_delta_cd4_cd8 <- metrics_df_delta_cd4_cd8 |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+metrics_summary_long_delta_cd4_cd8 <- metrics_long_delta_cd4_cd8 |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+metric_split_labels_delta_cd4_cd8 <- metrics_long_delta_cd4_cd8 |>
+  left_join(metrics_summary_long_delta_cd4_cd8, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+metrics_summary_long_delta_cd4_cd8 <- metrics_summary_long_delta_cd4_cd8 |>
+  left_join(metric_split_labels_delta_cd4_cd8, by = "Metric")
+
+metrics_summary_long_delta_cd4_cd8
+```
+
+```{r}
+write_csv(
+  metrics_df_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_metrics_per_split.csv"
+)
+
+write_csv(
+  metrics_long_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_metrics_per_split_long.csv"
+)
+
+write_csv(
+  metrics_summary_long_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_metrics_summary_long.csv"
+)
+```
+
+```{r}
+# --------------------------------------------------
+# 7. Identify optimal model
+# --------------------------------------------------
+
+metrics_ranked_delta_cd4_cd8 <- metrics_df_delta_cd4_cd8 |>
+  mutate(
+    rmse_rank = rank(rmse, ties.method = "average"),
+    rsq_rank  = rank(-rsq, ties.method = "average"),
+    combined_rank = rmse_rank + rsq_rank
+  ) |>
+  arrange(combined_rank, rmse_rank, rsq_rank)
+
+optimal_model_summary_delta_cd4_cd8 <- metrics_ranked_delta_cd4_cd8 |>
+  dplyr::slice(1)
+
+optimal_split_delta_cd4_cd8 <- optimal_model_summary_delta_cd4_cd8$Split
+
+optimal_model_delta_cd4_cd8 <- model_results_delta_cd4_cd8[[optimal_split_delta_cd4_cd8]]
+optimal_split_object_delta_cd4_cd8 <- split_objects_delta_cd4_cd8[[optimal_split_delta_cd4_cd8]]
+
+optimal_model_summary_delta_cd4_cd8
+optimal_split_delta_cd4_cd8
+optimal_model_delta_cd4_cd8
+
+optimal_model_features_delta_cd4_cd8 <- optimal_model_delta_cd4_cd8$features |>
+  filter(Scaled_Importance > 0) |>
+  arrange(desc(Scaled_Importance))
+```
+
+```{r}
+write_csv(
+  metrics_ranked_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_metrics_ranked_optimal_model.csv"
+)
+
+write_csv(
+  optimal_model_summary_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_optimal_model_summary.csv"
+)
+
+write_csv(
+  optimal_model_features_delta_cd4_cd8,
+  "../tables/model/Delta_CD4_CD8_optimal_model_features.csv"
+)
+```
+
+## Figure S17H
+
+```{r}
+optimal_model_features_delta_cd4_cd8 |>
+  filter(Scaled_Importance > 0) |>
+  # Make a nice bar plot of the top 20 features by Scaled_Importance, colored by Sign
+  slice_max(Scaled_Importance, n = 20) |>
+  ggplot(aes(x = reorder(Feature, Scaled_Importance), y = Scaled_Importance, fill = Sign)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_hiv() +
+  labs(
+    title = "Top 20 features in optimal model for delta CD4/CD8 T-cell count ratio prediction using baseline proteomics",
+    x = "Feature",
+    y = "Scaled feature importance"
+  ) +
+  scale_fill_manual(values = c("POS" = "firebrick", "NEG" = "steelblue")) +
+  theme(legend.title = element_blank())
+
+ggsave(
+  filename = "Optimal_model_delta_CD4_CD8_FU_top_features.pdf",
+  path = "../plots/pdf/model/",
+  width = 10,
+  height = 8
+)
+```
+
+## Figure S17I
+
+```{r}
+# --------------------------------------------------
+# 1. Prepare prediction dataframe
+# --------------------------------------------------
+
+pred_df <- optimal_model_delta_cd4_cd8$comparison_plot$data |>
+  mutate(
+    .pred  = as.numeric(.pred),
+    Delta_CD4_CD8 = as.numeric(Delta_CD4_CD8)
+  ) |>
+  filter(
+    !is.na(.pred),
+    !is.na(Delta_CD4_CD8),
+    is.finite(.pred),
+    is.finite(Delta_CD4_CD8)
+  )
+
+# --------------------------------------------------
+# 2. Fit linear model and calculate distance to line
+# --------------------------------------------------
+
+lm_fit <- lm(Delta_CD4_CD8 ~ .pred, data = pred_df)
+
+# 🔥 Compute R² (robust way)
+rsq_optimal_delta_cd4_cd8 <- summary(lm_fit)$r.squared
+
+pred_df <- pred_df |>
+  mutate(
+    fitted_line = predict(lm_fit, newdata = pred_df),
+    distance_to_line = abs(Delta_CD4_CD8 - fitted_line)
+  )
+
+# --------------------------------------------------
+# 3. Scatter plot (UPDATED)
+# --------------------------------------------------
+
+p_pred_delta_cd4_cd8 <- ggplot(
+  pred_df,
+  aes(
+    x = .pred,
+    y = Delta_CD4_CD8,
+    color = distance_to_line
+  )
+) +
+  geom_point(
+    size = 3.5,
+    alpha = 0.9
+  ) +
+  
+  # 🔥 SINGLE regression line (no duplication)
+  geom_abline(
+    slope = coef(lm_fit)[2],
+    intercept = coef(lm_fit)[1],
+    color = "black",
+    linewidth = 1
+  ) +
+  
+  # 🔥 R² annotation instead of stat_cor
+  annotate(
+    "text",
+    x = min(pred_df$.pred, na.rm = TRUE),
+    y = max(pred_df$Delta_CD4_CD8, na.rm = TRUE),
+    label = paste0("R² = ", round(rsq_optimal_delta_cd4_cd8, 3)),
+    hjust = 0,
+    vjust = 1,
+    size = 5
+  ) +
+  
+  scale_color_gradient(
+    low = "grey80",
+    high = "#C03830",
+    name = "Distance to\nregression line"
+  ) +
+  
+  theme_hiv() +
+  labs(
+    title = "Predicted vs observed ΔCD4/CD8 ratio",
+    subtitle = "Baseline proteomics prediction",
+    x = "Predicted ΔCD4/CD8",
+    y = "Observed ΔCD4/CD8"
+  ) +
+  theme(
+    legend.position = "right"
+  )
+
+p_pred_delta_cd4_cd8
+
+# --------------------------------------------------
+# 4. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/model", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/model", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/model/Predicted_vs_observed_delta_CD4_CD8_R2.pdf",
+  p_pred_delta_cd4_cd8,
+  width = 12,
+  height = 10
+)
+
+ggsave(
+  "../plots/png/model/Predicted_vs_observed_delta_CD4_CD8_R2.png",
+  p_pred_delta_cd4_cd8,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+```
+
+### Extra
+
+```{r}
+# --------------------------------------------------
+# 5. Extract and summarise model metrics
+# --------------------------------------------------
+
+metrics_df_cd4_fu <- purrr::imap_dfr(
+  model_results_cd4_fu,
+  function(model, split_name) {
+    tibble(
+      Split = split_name,
+      rsq  = as.numeric(model$metrics$rsq),
+      rmse = as.numeric(model$metrics$rmse)
+    )
+  }
+)
+
+metrics_long_cd4_fu <- metrics_df_cd4_fu |>
+  pivot_longer(
+    cols = c(rsq, rmse),
+    names_to = "Metric",
+    values_to = "Value"
+  )
+
+metrics_summary_long_cd4_fu <- metrics_long_cd4_fu |>
+  group_by(Metric) |>
+  summarise(
+    Median = median(Value, na.rm = TRUE),
+    Q1     = quantile(Value, 0.25, na.rm = TRUE),
+    Q3     = quantile(Value, 0.75, na.rm = TRUE),
+    Min    = min(Value, na.rm = TRUE),
+    Max    = max(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+metric_split_labels_cd4_fu <- metrics_long_cd4_fu |>
+  left_join(metrics_summary_long_cd4_fu, by = "Metric") |>
+  group_by(Metric) |>
+  summarise(
+    Median_split = Split[which.min(abs(Value - Median))],
+    Median_split_value = Value[which.min(abs(Value - Median))],
+
+    Min_split = Split[which.min(Value)],
+    Min_split_value = Value[which.min(Value)],
+
+    Max_split = Split[which.max(Value)],
+    Max_split_value = Value[which.max(Value)],
+
+    .groups = "drop"
+  )
+
+metrics_summary_long_cd4_fu <- metrics_summary_long_cd4_fu |>
+  left_join(metric_split_labels_cd4_fu, by = "Metric")
+
+metrics_summary_long_cd4_fu
+
+write_csv(
+  metrics_df_cd4_fu,
+  "../tables/model/CD4_FU_metrics_per_split.csv"
+)
+
+write_csv(
+  metrics_long_cd4_fu,
+  "../tables/model/CD4_FU_metrics_per_split_long.csv"
+)
+
+write_csv(
+  metrics_summary_long_cd4_fu,
+  "../tables/model/CD4_FU_metrics_summary_long.csv"
+)
+```
+
+```{r}
+# Make boxplots of metrics across splits for rsq and rmse in two separate windows using facet for Metric
+# metrics_long_cd4_fu
+
+p_rmse_delta_cd4_cd8 <- metrics_long_delta_cd4_cd8 |>
+  filter(Metric == "rmse") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (RMSE) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rsq_delta_cd4_cd8 <- metrics_long_delta_cd4_cd8 |>
+  filter(Metric == "rsq") |>
+  ggplot(aes(x = Metric, y = Value)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  theme_hiv() +
+  labs(
+    title = "Model performance metric (R^2) across 100 splits",
+    x = "Metric",
+    y = "Value"
+  )
+
+p_rmse_delta_cd4_cd8 + p_rsq_delta_cd4_cd8 + plot_layout(ncol = 2)
+ggsave(
+  filename = "Model_performance_metrics_delta_CD4_CD8_FU_100_splits.pdf",
+  path = "../plots/pdf/model/",
+  width = 9,
+  height = 7
+)
 ```
 
 # SessionInfo

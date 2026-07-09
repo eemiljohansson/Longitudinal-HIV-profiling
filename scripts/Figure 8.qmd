@@ -15,6 +15,8 @@ library(forcats)
 library(HDAnalyzeR)
 library(ggConvexHull)
 library(UpSetR)
+library(readxl)
+library(pheatmap)
 
 # Specify function
 select <- dplyr::select
@@ -32,74 +34,1820 @@ ggplot2::update_geom_defaults(
 source("../scripts/functions/themes_palettes.R")
 
 # Read data
-metadata <- read_csv("../data/metadata/metadata.csv")
-data_long <- read_csv("../data/data_long.csv")
-data_wide <- read_csv("../data/data_wide.csv")
+metadata <- read_csv("../data/curated/metadata.csv")
+data_long <- read_csv("../data/curated/data_long.csv")
+data_wide <- read_csv("../data/curated/data_wide.csv")
+data_long_ml <- read_csv("../data/curated/data_long_ml.csv")
+data_wide_ml <- read_csv("../data/curated/data_wide_ml.csv")
+
+single_cell_cluster_data_raw <- read_tsv("../data/HPA/rna_single_cell_cluster.tsv")
+hpa_data <- read_tsv("../data/HPA/proteinatlas_2ba9716c.tsv")
+olink_uniprot_raw <- read_excel("../data/HPA/assay_list.xlsx", skip = 1)
+
+olink_uniprot <- olink_uniprot_raw |>
+  select(UniProt = `Uniprot ID`, Feature = `Gene name`)
+olink_uniprot
 ```
-
-# Figure 3
-
-## Figure 3A
 
 ```{r}
-
+metadata |>
+  filter(Disease == "HIV") |>
+  group_by(`Immune responder (CD4/CD8)`, Timepoint) |>
+  summarize(n = n()) 
 ```
 
-## Figure 3B
+
+
+
 
 ```{r}
-
+data_wide |>
+  # Count the number of NAs per Feature
+  pivot_longer(
+    cols = -DAid,
+    names_to = "Feature",
+    values_to = "NPX"
+  ) |>
+  group_by(Feature) |>
+  summarise(
+    n_missing = sum(is.na(NPX)),
+    n_total = n(),
+    prop_missing = n_missing / n_total
+  ) |>
+  arrange(desc(prop_missing)) |>
+  filter(Feature == "MFAP5")
 ```
 
-## Figure 3C
+# Figure 8
+
+## Figure 8A
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline",
+         Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4/CD8 ratio (baseline)` < 0.5 &
+      `CD4/CD8 ratio (follow-up)` < 0.5 ~ "case",
 
+      `CD4/CD8 ratio (baseline)` >= 1 &
+      `CD4/CD8 ratio (follow-up)` >= 1 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(Comparison)) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) 
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+table(input_metadata$Comparison)
+
+input_metadata |>
+  count(Comparison) |>
+  mutate(prop = n / sum(n))
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(dat = hd_obj,
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = c("control"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "Immune non-responders vs responders (at baseline)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_cd4cd8_baseline_immune_responders <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_immune_responder_baseline <- p
+
+ggsave(
+  filename = "Volcano plot immune responder baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano plot immune responder baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
 ```
-
-## Figure 3D
 
 ```{r}
+res_cd4cd8_baseline_immune_responders |>
+  filter(Feature == "MFAP5")
 
+res_cd4cd8_fu_immune_responders |>
+  filter(Feature == "PGLYRP1")
+
+res_cd4cd8_fu_immune_responders |>
+  filter(Feature == "KIR3DL1")
 ```
 
-## Figure 3E
+
+## Figure 8B
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Follow-up",
+         Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4/CD8 ratio (baseline)` < 0.5 &
+      `CD4/CD8 ratio (follow-up)` < 0.5 ~ "case",
 
+      `CD4/CD8 ratio (baseline)` >= 1 &
+      `CD4/CD8 ratio (follow-up)` >= 1 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(Comparison)) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age)) 
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+table(input_metadata$Comparison)
+
+input_metadata |>
+  count(Comparison) |>
+  mutate(prop = n / sum(n))
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma(dat = hd_obj,
+                          variable = "Comparison", 
+                          case = "case", 
+                          control = c("control"), 
+                          correct = c("Age", "Sex")) |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.5,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "Immune non-responders vs responders (at follow-up)",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_cd4cd8_fu_immune_responders <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_immune_responder_fu <- p
+
+ggsave(
+  filename = "Volcano plot immune responder fu.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano plot immune responder fu.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
 ```
 
-## Figure 3F
+## Figure 8C
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4/CD8 ratio (baseline)` < 0.5 &
+      `CD4/CD8 ratio (follow-up)` < 0.5 ~ "case",
 
+      `CD4/CD8 ratio (baseline)` >= 1 &
+      `CD4/CD8 ratio (follow-up)` >= 1 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(Comparison == "case") |>
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          correct = NULL,
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "Immune non-responders follow-up vs baseline",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_non_immune_responders_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_non_immune_responders_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot non_immune_responders_fu_baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano plot non_immune_responders_fu_baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
 ```
 
-## Figure 3G
+
+## Figure 8D
 
 ```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4/CD8 ratio (baseline)` < 0.5 &
+      `CD4/CD8 ratio (follow-up)` < 0.5 ~ "case",
 
+      `CD4/CD8 ratio (baseline)` >= 1 &
+      `CD4/CD8 ratio (follow-up)` >= 1 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(Comparison == "control") |>
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(dat = input_data, 
+                        metadata = input_metadata, 
+                        is_wide = TRUE, 
+                        sample_id = "DAid",
+                        var_name = "Feature",
+                        value_name = "NPX")
+
+de_results <- hd_de_limma_paired(hd_obj, 
+                          variable = "Timepoint", 
+                          case = "FU", 
+                          control = "Baseline", 
+                          #correct = NULL,
+                          paired = TRUE,
+                          id_column = "ID") |> 
+  hd_plot_volcano(pval_lim = 0.05,
+                  logfc_lim = 0.25,
+                  top_up_prot = 20,
+                  top_down_prot = 20,
+                  title = "Immune responders follow-up vs. baseline",
+                  report_nproteins = FALSE,
+                  user_defined_proteins = NULL)
+
+head(de_results$de_res)
+
+res_immune_responders_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL   # removes legend title ("Significance")
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_immune_responders_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot immune_responders_fu_baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7)
+
+ggsave(
+  filename = "Volcano plot immune_responders_fu_baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7)
 ```
 
-# Save plots
-
-## Figure 3
+## Combine A-D
 
 ```{r}
+p_volcano_immune_responder_baseline + theme(legend.position = "none") +
+  p_volcano_immune_responder_fu + theme(legend.position = "none") +
+  p_volcano_non_immune_responders_fu_baseline + theme(legend.position = "none") +
+  p_volcano_immune_responders_fu_baseline + theme(legend.position = "none") +
+  plot_layout(ncol = 4)
 
+ggsave(
+  filename = "Volcano plots Immune responders CD4 CD4CD8.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 24,
+  height = 7)
+
+ggsave(
+  filename = "Volcano plots Immune responders CD4 CD4CD8.png",
+  path     = "../plots/png/volcano/",
+  width    = 24,
+  height = 7)
 ```
 
-## Supplementary Figure 3
+## Figure 8E & Figure 8G
 
 ```{r}
+# ---------------------------
+# 5) Feature × Cluster matrix (nCPM)
+#    - average if multiple genes map to same Feature/Cluster
+# ---------------------------
+mat_vasculature <- cluster_df_vasculature |>
+  select(Feature, `Cell type`, nCPM) |>
+  group_by(Feature, `Cell type`) |>
+  summarise(
+    nCPM = mean(nCPM, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_wider(
+    names_from  = `Cell type`,
+    values_from = nCPM,
+    values_fill = 0
+  ) |>
+  column_to_rownames("Feature") |>
+  as.matrix()
 
+# ---------------------------
+# 6) Optional: log-scale (recommended)
+# ---------------------------
+mat_vasculature_log <- log1p(mat_vasculature)
+
+# ---------------------------
+# 7) Plot pheatmap
+# ---------------------------
+
+pdf("../plots/pdf/cluster/single_cell_vasculature_heatmap_nCPM_log1p_rowscaled.pdf",
+    width = 10, height = 12
+)
+
+pheatmap(
+  mat_vasculature_log,
+  cluster_rows    = TRUE,
+  cluster_cols    = TRUE,
+  scale           = "row",     # relative expression per protein
+  show_rownames   = TRUE,
+  show_colnames   = TRUE,
+  fontsize_row    = 9,
+  fontsize_col    = 9,
+  color           = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main            = "Vasculature single-cell expression\n(nCPM, log1p, row-scaled)"
+)
+
+dev.off()
 ```
-
-# Save Tables
 
 ```{r}
+targets <- res_cd4cd8_baseline_immune_responders |>
+  filter(adj.P.Val < 0.05) |>
+  pull(Feature)
 
+combined_df <- hpa_data |>
+  select(Ensembl, UniProt = Uniprot) |>
+  inner_join(olink_uniprot, by = "UniProt") |>
+  filter(Feature %in% targets)
+
+vasculature_clusters <- single_cell_cluster_data_raw |>
+  filter(Tissue == "vasculature") |>
+  rename(Ensembl = Gene)
+
+cluster_df_vasculature <- vasculature_clusters |>
+  inner_join(combined_df, by = "Ensembl")
+
+up_features <- res_cd4cd8_baseline_immune_responders |>
+  filter(adj.P.Val < 0.05, logFC > 0) |>
+  pull(Feature)
+
+down_features <- res_cd4cd8_baseline_immune_responders |>
+  filter(adj.P.Val < 0.05, logFC < 0) |>
+  pull(Feature)
+
+mat_up <- mat_vasculature_log[rownames(mat_vasculature_log) %in% up_features, , drop = FALSE]
+
+mat_down <- mat_vasculature_log[rownames(mat_vasculature_log) %in% down_features, , drop = FALSE]
+
+mat_up   <- mat_up[apply(mat_up,   1, sd) > 0, ]
+
+row_sd <- apply(mat_down, 1, function(x) sd(x, na.rm = TRUE))
+
+mat_down <- mat_down[row_sd > 1e-6, , drop = FALSE]
+
+pdf(
+  "../plots/pdf/cluster/single_cell_vasculature_heatmap_nCPM_log1p_rowscaled_split.pdf",
+  width = 10,
+  height = 10
+)
+
+pheatmap(
+  mat_up,
+  cluster_rows  = TRUE,
+  cluster_cols  = TRUE,
+  scale         = "row",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row  = 8,
+  fontsize_col  = 8,
+  color         = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main          = ""
+)
+
+dev.off()
+
+if (nrow(mat_down) >= 2) {
+
+  pdf(
+    "../plots/pdf/cluster/single_cell_vasculature_heatmap_nCPM_log1p_rowscaled_downregulated.pdf",
+    width = 10,
+    height = 6
+  )
+
+  pheatmap(
+    mat_down,
+    cluster_rows  = TRUE,
+    cluster_cols  = TRUE,
+    scale         = "row",
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    fontsize_row  = 8,
+    fontsize_col  = 8,
+    color         = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+    main          = ""
+  )
+
+  dev.off()
+
+} else {
+  message(
+    "Down-regulated immune responder proteins show no variable expression ",
+    "across vasculature single-cell clusters (SD ≈ 0)."
+  )
+}
 ```
+
+## Figure 8F & Figure 8H
+
+```{r}
+# ---------------------------
+# 5) Feature × Cluster matrix (nCPM)
+#    - average if multiple genes map to same Feature/Cluster
+# ---------------------------
+mat_blood <- cluster_df_blood |>
+  select(Feature, `Cell type`, nCPM) |>
+  group_by(Feature, `Cell type`) |>
+  summarise(
+    nCPM = mean(nCPM, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_wider(
+    names_from  = `Cell type`,
+    values_from = nCPM,
+    values_fill = 0
+  ) |>
+  column_to_rownames("Feature") |>
+  as.matrix()
+
+# ---------------------------
+# 6) Optional: log-scale (recommended)
+# ---------------------------
+
+mat_blood_log <- log1p(mat_blood)
+
+# ---------------------------
+# 6b) Remove zero-variance rows (critical!)
+# ---------------------------
+row_sd <- apply(mat_blood_log, 1, sd, na.rm = TRUE)
+
+mat_blood_log_filt <- mat_blood_log[row_sd > 0, ]
+
+cat("Removed", sum(row_sd == 0), "features with zero variance\n")
+
+
+# ---------------------------
+# 7) Plot pheatmap
+# ---------------------------
+pdf("../plots/pdf/cluster/single_cell_blood_heatmap_nCPM_log1p_rowscaled.pdf",
+    width = 10, height = 12
+)
+
+pheatmap(
+  mat_blood_log_filt,
+  cluster_rows    = TRUE,
+  cluster_cols    = TRUE,
+  scale           = "row",     # relative expression per protein
+  show_rownames   = TRUE,
+  show_colnames   = TRUE,
+  fontsize_row    = 9,
+  fontsize_col    = 9,
+  color           = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main            = "Blood single-cell expression\n(nCPM, log1p, row-scaled)"
+)
+
+dev.off()
+
+zero_var_features <- names(row_sd[row_sd == 0])
+head(zero_var_features)
+```
+
+```{r}
+blood_clusters <- single_cell_cluster_data_raw |>
+  filter(Tissue == "blood") |>
+  rename(Ensembl = Gene)
+
+cluster_df_blood <- blood_clusters |>
+  inner_join(combined_df, by = "Ensembl")
+
+up_features <- res_cd4cd8_baseline_immune_responders |>
+  filter(adj.P.Val < 0.05, logFC > 0) |>
+  pull(Feature)
+
+down_features <- res_cd4cd8_baseline_immune_responders |>
+  filter(adj.P.Val < 0.05, logFC < 0) |>
+  pull(Feature)
+
+mat_up <- mat_blood_log_filt[rownames(mat_blood_log_filt) %in% up_features, , drop = FALSE]
+mat_down <- mat_blood_log_filt[rownames(mat_blood_log_filt) %in% down_features, , drop = FALSE]
+
+mat_up   <- mat_up[apply(mat_up,   1, sd) > 0, ]
+mat_down <- mat_down[apply(mat_down, 1, sd) > 0, ]
+
+pdf(
+  "../plots/pdf/cluster/single_cell_blood_heatmap_nCPM_log1p_rowscaled_split.pdf",
+  width = 10,
+  height = 10
+)
+
+pheatmap(
+  mat_up,
+  cluster_rows  = TRUE,
+  cluster_cols  = TRUE,
+  scale         = "row",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row  = 8,
+  fontsize_col  = 8,
+  color         = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main          = ""
+)
+
+dev.off()
+
+pdf(
+  "../plots/pdf/cluster/single_cell_blood_heatmap_nCPM_log1p_rowscaled_downregulated.pdf",
+  width = 10,
+  height = 6
+)
+
+pheatmap(
+  mat_down,
+  cluster_rows  = TRUE,
+  cluster_cols  = TRUE,
+  scale         = "row",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  fontsize_row  = 8,
+  fontsize_col  = 8,
+  color         = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main          = ""
+)
+
+dev.off()
+```
+
+# Supplementary Figure 16
+
+# PCA
+
+## CD4/CD8
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(HDAnalyzeR)
+
+# --------------------------------------------------
+# 1. Prepare metadata
+# --------------------------------------------------
+
+pca_metadata <- metadata |>
+  filter(
+    Disease == "Healthy" |
+      (!is.na(`Immune responder (CD4/CD8)`) & Disease == "HIV")
+  ) |>
+  mutate(
+    ID = as.character(ID),
+    PCA_group = case_when(
+      Disease == "Healthy" ~ "Healthy",
+
+      `Immune responder (CD4/CD8)` == "Immune responder" &
+        Timepoint == "Baseline" ~ "Immune responders (baseline)",
+
+      `Immune responder (CD4/CD8)` == "Immune responder" &
+        Timepoint == "Follow-up" ~ "Immune responders (follow-up)",
+
+      `Immune responder (CD4/CD8)` == "Immune non-responder" &
+        Timepoint == "Baseline" ~ "Non-responders (baseline)",
+
+      `Immune responder (CD4/CD8)` == "Immune non-responder" &
+        Timepoint == "Follow-up" ~ "Non-responders (follow-up)",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(PCA_group))
+
+# --------------------------------------------------
+# 2. Run PCA once
+# --------------------------------------------------
+
+input_df <- data_wide_ml |>
+  filter(DAid %in% pca_metadata$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# --------------------------------------------------
+# 3. Join PCA + metadata
+# --------------------------------------------------
+
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(pca_metadata, by = "DAid") |>
+  mutate(
+    ID = as.character(ID),
+    PCA_panel = case_when(
+      PCA_group %in% c(
+        "Immune responders (baseline)",
+        "Immune responders (follow-up)"
+      ) ~ "Immune responders",
+
+      PCA_group %in% c(
+        "Non-responders (baseline)",
+        "Non-responders (follow-up)"
+      ) ~ "Immune non-responders",
+
+      TRUE ~ NA_character_
+    )
+  )
+
+# --------------------------------------------------
+# 4. Duplicate healthy samples into both facets
+#    Avoid crossing() conflict by using bind_rows()
+# --------------------------------------------------
+
+healthy_base <- pca_plot_df |>
+  filter(PCA_group == "Healthy") |>
+  mutate(ID = as.character(ID)) |>
+  select(-PCA_panel)
+
+healthy_df <- bind_rows(
+  healthy_base |>
+    mutate(PCA_panel = "Immune responders"),
+
+  healthy_base |>
+    mutate(PCA_panel = "Immune non-responders")
+)
+
+hiv_df <- pca_plot_df |>
+  filter(PCA_group != "Healthy") |>
+  mutate(ID = as.character(ID))
+
+pca_facet_df <- bind_rows(hiv_df, healthy_df) |>
+  mutate(
+    ID = as.character(ID),
+
+    PCA_panel = factor(
+      PCA_panel,
+      levels = c("Immune responders", "Immune non-responders")
+    ),
+
+    PCA_group = factor(
+      PCA_group,
+      levels = c(
+        "Healthy",
+        "Immune responders (baseline)",
+        "Immune responders (follow-up)",
+        "Non-responders (baseline)",
+        "Non-responders (follow-up)"
+      )
+    ),
+
+    Timepoint = case_when(
+      Disease == "Healthy" ~ "Healthy",
+      TRUE ~ as.character(Timepoint)
+    ),
+
+    Timepoint = factor(
+      Timepoint,
+      levels = c("Baseline", "Follow-up", "Healthy")
+    )
+  )
+
+# --------------------------------------------------
+# 5. Colors
+# --------------------------------------------------
+
+pca_colors <- c(
+  "Healthy" = "#BDBDBD",
+  "Immune responders (baseline)" = "#4B988F",
+  "Immune responders (follow-up)" = "#5A588B",
+  "Non-responders (baseline)" = "#C89A1B",
+  "Non-responders (follow-up)" = "#EABBBB"
+)
+
+# --------------------------------------------------
+# 6. Ellipse data
+# --------------------------------------------------
+
+ellipse_df <- pca_facet_df |>
+  group_by(PCA_panel, PCA_group) |>
+  filter(n() >= 3) |>
+  ungroup()
+
+# --------------------------------------------------
+# 7. Plot
+# --------------------------------------------------
+
+p_pca_facet <- ggplot(
+  pca_facet_df,
+  aes(x = PC1, y = PC2, color = PCA_group, shape = Timepoint)
+) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.6
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.6
+  ) +
+  geom_line(
+    data = pca_facet_df |> filter(Disease == "HIV"),
+    aes(group = ID),
+    color = "grey80",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  stat_ellipse(
+    data = ellipse_df,
+    aes(group = PCA_group),
+    type = "norm",
+    level = 0.95,
+    linewidth = 0.9,
+    show.legend = FALSE
+  ) +
+  geom_point(size = 3, alpha = 0.85) +
+  facet_wrap(~ PCA_panel, nrow = 1) +
+  scale_color_manual(values = pca_colors, drop = FALSE) +
+  labs(
+    title = "PCA of immune responders and non-responders",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = NULL,
+    shape = NULL
+  ) +
+  theme_hiv() +
+  theme(
+    legend.position = "right"
+  )
+
+p_pca_facet
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/pca", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/pca", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/pca/PCA_immune_responders_nonresponders_faceted_ellipses.pdf",
+  p_pca_facet,
+  width = 14,
+  height = 6
+)
+
+ggsave(
+  "../plots/png/pca/PCA_immune_responders_nonresponders_faceted_ellipses.png",
+  p_pca_facet,
+  width = 14,
+  height = 6,
+  dpi = 300
+)
+```
+
+## CD4
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(HDAnalyzeR)
+
+# --------------------------------------------------
+# 1. Prepare metadata using Immune responder (CD4)
+# --------------------------------------------------
+
+pca_metadata <- metadata |>
+  filter(
+    Disease == "Healthy" |
+      (!is.na(`Immune responder (CD4)`) & Disease == "HIV")
+  ) |>
+  mutate(
+    ID = as.character(ID),
+    PCA_group = case_when(
+      Disease == "Healthy" ~ "Healthy",
+
+      `Immune responder (CD4)` == "Immune responder" &
+        Timepoint == "Baseline" ~ "Immune responders (baseline)",
+
+      `Immune responder (CD4)` == "Immune responder" &
+        Timepoint == "Follow-up" ~ "Immune responders (follow-up)",
+
+      `Immune responder (CD4)` == "Immune non-responder" &
+        Timepoint == "Baseline" ~ "Non-responders (baseline)",
+
+      `Immune responder (CD4)` == "Immune non-responder" &
+        Timepoint == "Follow-up" ~ "Non-responders (follow-up)",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(PCA_group))
+
+# --------------------------------------------------
+# 2. Run PCA once
+# --------------------------------------------------
+
+input_df <- data_wide_ml |>
+  filter(DAid %in% pca_metadata$DAid)
+
+pca_df <- hd_pca(
+  dat = input_df,
+  components = 10,
+  by_sample = TRUE,
+  impute = TRUE,
+  seed = 123
+)
+
+pc1 <- pca_df$pca_variance$percent_variance[1]
+pc2 <- pca_df$pca_variance$percent_variance[2]
+
+# --------------------------------------------------
+# 3. Join PCA + metadata
+# --------------------------------------------------
+
+pca_plot_df <- pca_df$pca_res |>
+  inner_join(pca_metadata, by = "DAid") |>
+  mutate(
+    ID = as.character(ID),
+    PCA_panel = case_when(
+      PCA_group %in% c(
+        "Immune responders (baseline)",
+        "Immune responders (follow-up)"
+      ) ~ "Immune responders",
+
+      PCA_group %in% c(
+        "Non-responders (baseline)",
+        "Non-responders (follow-up)"
+      ) ~ "Immune non-responders",
+
+      TRUE ~ NA_character_
+    )
+  )
+
+# --------------------------------------------------
+# 4. Duplicate healthy samples into both facets
+# --------------------------------------------------
+
+healthy_base <- pca_plot_df |>
+  filter(PCA_group == "Healthy") |>
+  select(-PCA_panel)
+
+healthy_df <- bind_rows(
+  healthy_base |> mutate(PCA_panel = "Immune responders"),
+  healthy_base |> mutate(PCA_panel = "Immune non-responders")
+)
+
+hiv_df <- pca_plot_df |>
+  filter(PCA_group != "Healthy")
+
+pca_facet_df <- bind_rows(hiv_df, healthy_df) |>
+  mutate(
+    ID = as.character(ID),
+
+    PCA_panel = factor(
+      PCA_panel,
+      levels = c("Immune responders", "Immune non-responders")
+    ),
+
+    PCA_group = factor(
+      PCA_group,
+      levels = c(
+        "Healthy",
+        "Immune responders (baseline)",
+        "Immune responders (follow-up)",
+        "Non-responders (baseline)",
+        "Non-responders (follow-up)"
+      )
+    ),
+
+    Timepoint = case_when(
+      Disease == "Healthy" ~ "Healthy",
+      TRUE ~ as.character(Timepoint)
+    ),
+
+    Timepoint = factor(
+      Timepoint,
+      levels = c("Baseline", "Follow-up", "Healthy")
+    )
+  )
+
+# --------------------------------------------------
+# 5. Colors
+# --------------------------------------------------
+
+pca_colors <- c(
+  "Healthy" = "#BDBDBD",
+  "Immune responders (baseline)" = "#4B988F",
+  "Immune responders (follow-up)" = "#5A588B",
+  "Non-responders (baseline)" = "#C89A1B",
+  "Non-responders (follow-up)" = "#EABBBB"
+)
+
+# --------------------------------------------------
+# 6. Ellipse data
+# --------------------------------------------------
+
+ellipse_df <- pca_facet_df |>
+  group_by(PCA_panel, PCA_group) |>
+  filter(n() >= 3) |>
+  ungroup()
+
+# --------------------------------------------------
+# 7. Plot
+# --------------------------------------------------
+
+p_pca_facet_cd4 <- ggplot(
+  pca_facet_df,
+  aes(x = PC1, y = PC2, color = PCA_group, shape = Timepoint)
+) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.6
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.6
+  ) +
+  geom_line(
+    data = pca_facet_df |> filter(Disease == "HIV"),
+    aes(group = ID),
+    color = "grey80",
+    alpha = 0.5,
+    linewidth = 0.5
+  ) +
+  stat_ellipse(
+    data = ellipse_df,
+    aes(group = PCA_group),
+    type = "norm",
+    level = 0.95,
+    linewidth = 0.9,
+    show.legend = FALSE
+  ) +
+  geom_point(size = 3, alpha = 0.85) +
+  facet_wrap(~ PCA_panel, nrow = 1) +
+  scale_color_manual(values = pca_colors, drop = FALSE) +
+  labs(
+    title = "PCA of immune responders and non-responders based on CD4 cell count",
+    x = paste0("PC1 (", round(pc1, 2), "%)"),
+    y = paste0("PC2 (", round(pc2, 2), "%)"),
+    color = NULL,
+    shape = NULL
+  ) +
+  theme_hiv() +
+  theme(
+    legend.position = "right"
+  )
+
+p_pca_facet_cd4
+
+# --------------------------------------------------
+# 8. Save
+# --------------------------------------------------
+
+dir.create("../plots/pdf/pca", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/pca", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/pdf/pca/PCA_immune_responders_CD4_faceted_ellipses.pdf",
+  p_pca_facet_cd4,
+  width = 14,
+  height = 6
+)
+
+ggsave(
+  "../plots/png/pca/PCA_immune_responders_CD4_faceted_ellipses.png",
+  p_pca_facet_cd4,
+  width = 14,
+  height = 6,
+  dpi = 300
+)
+```
+
+# Supplementary Figure 17
+
+## A
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Baseline",
+         Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4 cell count (baseline)` < 350 &
+      `CD4 cell count (follow-up)` < 350 ~ "case",
+
+      `CD4 cell count (baseline)` > 500 &
+      `CD4 cell count (follow-up)` > 500 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(Comparison)) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+de_results <- hd_de_limma(
+  dat = hd_obj,
+  variable = "Comparison",
+  case = "case",
+  control = c("control"),
+  correct = c("Age", "Sex")
+) |>
+  hd_plot_volcano(
+    pval_lim = 0.05,
+    logfc_lim = 0.5,
+    top_up_prot = 20,
+    top_down_prot = 20,
+    title = "CD4 non-responders vs responders (baseline)",
+    report_nproteins = FALSE
+  )
+
+res_cd4_baseline_immune <- de_results$de_res
+
+p_cd4_baseline <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL
+  )
+
+p_cd4_baseline$layers[[1]]$aes_params$size   <- 3
+p_cd4_baseline$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_baseline$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_baseline
+```
+
+```{r}
+res_cd4_baseline_immune
+res_cd4_fu_immune
+
+# Overlapping significant proteins at baseline and follow-up
+sig_baseline <- res_cd4_baseline_immune |>
+  filter(adj.P.Val < 0.05) |>
+  pull(Feature)
+
+sig_fu <- res_cd4_fu_immune |>
+  filter(adj.P.Val < 0.05) |>
+  pull(Feature)
+
+overlap <- intersect(sig_baseline, sig_fu)
+```
+
+
+## B
+
+```{r}
+input_metadata <- metadata |>
+  filter(Timepoint == "Follow-up",
+         Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4 cell count (baseline)` < 350 &
+      `CD4 cell count (follow-up)` < 350 ~ "case",
+
+      `CD4 cell count (baseline)` > 500 &
+      `CD4 cell count (follow-up)` > 500 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(Comparison)) |>
+  mutate(Age = ifelse(is.na(Age), `Age (baseline)`, Age))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+de_results <- hd_de_limma(
+  dat = hd_obj,
+  variable = "Comparison",
+  case = "case",
+  control = c("control"),
+  correct = c("Age", "Sex")
+) |>
+  hd_plot_volcano(
+    pval_lim = 0.05,
+    logfc_lim = 0.5,
+    top_up_prot = 20,
+    top_down_prot = 20,
+    title = "CD4 non-responders vs responders (follow-up)",
+    report_nproteins = FALSE
+  )
+
+res_cd4_fu_immune <- de_results$de_res
+
+p_cd4_fu <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    name = NULL
+  )
+
+p_cd4_fu$layers[[1]]$aes_params$size   <- 3
+p_cd4_fu$layers[[1]]$aes_params$alpha  <- 0.7
+p_cd4_fu$layers[[1]]$aes_params$stroke <- 0
+
+p_cd4_fu
+```
+
+## C
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4 cell count (baseline)` < 350 &
+      `CD4 cell count (follow-up)` < 350 ~ "case",
+
+      `CD4 cell count (baseline)` > 500 &
+      `CD4 cell count (follow-up)` > 500 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(Comparison == "case") |>
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+de_results <- hd_de_limma_paired(
+  hd_obj,
+  variable = "Timepoint",
+  case = "FU",
+  control = "Baseline",
+  correct = NULL,              # ← KEEP EXACTLY LIKE YOUR ORIGINAL
+  paired = TRUE,
+  id_column = "ID"
+) |>
+  hd_plot_volcano(
+    pval_lim = 0.05,
+    logfc_lim = 0.25,
+    top_up_prot = 20,
+    top_down_prot = 20,
+    title = "CD4 non-responders follow-up vs baseline",
+    report_nproteins = FALSE,
+    user_defined_proteins = NULL
+  )
+
+head(de_results$de_res)
+
+res_cd4_non_responders_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_cd4_non_responders_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot CD4_non_responders_fu_baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Volcano plot CD4_non_responders_fu_baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7
+)
+```
+
+## D
+
+```{r}
+input_metadata <- metadata |>
+  filter(Subgroup != "Elite controller",
+         Disease == "HIV") |>
+  mutate(ID = as.character(ID)) |>
+  mutate(
+    Comparison = case_when(
+      `CD4 cell count (baseline)` < 350 &
+      `CD4 cell count (follow-up)` < 350 ~ "case",
+
+      `CD4 cell count (baseline)` > 500 &
+      `CD4 cell count (follow-up)` > 500 ~ "control",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(Comparison == "control") |>
+  mutate(Timepoint = ifelse(Timepoint == "Follow-up", "FU", Timepoint))
+
+input_data <- data_wide |>
+  filter(DAid %in% input_metadata$DAid)
+
+hd_obj <- HDAnalyzeR::hd_initialize(
+  dat = input_data,
+  metadata = input_metadata,
+  is_wide = TRUE,
+  sample_id = "DAid",
+  var_name = "Feature",
+  value_name = "NPX"
+)
+
+de_results <- hd_de_limma_paired(
+  hd_obj,
+  variable = "Timepoint",
+  case = "FU",
+  control = "Baseline",
+  correct = NULL,              # ← SAME AS YOUR ORIGINAL STYLE
+  paired = TRUE,
+  id_column = "ID"
+) |>
+  hd_plot_volcano(
+    pval_lim = 0.05,
+    logfc_lim = 0.25,
+    top_up_prot = 20,
+    top_down_prot = 20,
+    title = "CD4 responders follow-up vs baseline",
+    report_nproteins = FALSE,
+    user_defined_proteins = NULL
+  )
+
+head(de_results$de_res)
+
+res_cd4_responders_fu_baseline <- de_results$de_res
+
+p <- de_results$volcano_plot +
+  theme_hiv() +
+  theme(legend.position = "top") +
+  scale_color_manual(
+    values = c(
+      "significant down" = "#317EC2",
+      "significant up"   = "#C03830",
+      "not significant"  = "#C4C4C4"
+    ),
+    labels = c(
+      "significant down" = "Significantly decreased",
+      "significant up"   = "Significantly increased",
+      "not significant"  = "Not significant"
+    ),
+    name = NULL
+  )
+
+p$layers[[1]]$aes_params$size   <- 3
+p$layers[[1]]$aes_params$alpha  <- 0.7
+p$layers[[1]]$aes_params$stroke <- 0
+
+p
+
+p_volcano_cd4_responders_fu_baseline <- p
+
+ggsave(
+  filename = "Volcano plot CD4_responders_fu_baseline.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 10,
+  height   = 7
+)
+
+ggsave(
+  filename = "Volcano plot CD4_responders_fu_baseline.png",
+  path     = "../plots/png/volcano/",
+  width    = 10,
+  height   = 7
+)
+```
+
+## Combine plots
+
+```{r}
+# ==================================================
+# Combine Figure 8 (CD4 version, compact style)
+# ==================================================
+
+p_cd4_baseline + theme(legend.position = "none") +
+  p_cd4_fu + theme(legend.position = "none") +
+  p_volcano_cd4_non_responders_fu_baseline + theme(legend.position = "none") +
+  p_volcano_cd4_responders_fu_baseline + theme(legend.position = "none") +
+  plot_layout(ncol = 4)
+
+# ==================================================
+# Save
+# ==================================================
+
+ggsave(
+  filename = "Volcano plots CD4 immune responders.pdf",
+  path     = "../plots/pdf/volcano/",
+  width    = 24,
+  height   = 7
+)
+
+ggsave(
+  filename = "Volcano plots CD4 immune responders.png",
+  path     = "../plots/png/volcano/",
+  width    = 24,
+  height   = 7,
+  dpi      = 300
+)
+```
+
+## Heatmaps
+
+```{r}
+# ==================================================
+# 0. Libraries
+# ==================================================
+
+library(dplyr)
+library(tidyr)
+library(pheatmap)
+library(tibble)
+
+# ==================================================
+# 1. Targets (CD4)
+# ==================================================
+
+targets <- res_cd4_baseline_immune |>
+  filter(adj.P.Val < 0.05) |>
+  pull(Feature)
+
+# ==================================================
+# 2. SAFE JOIN (FIXED)
+# ==================================================
+
+combined_df <- hpa_data |>
+  select(Ensembl, UniProt = Uniprot) |>
+  distinct() |>
+  inner_join(
+    olink_uniprot |> distinct(),
+    by = "UniProt",
+    relationship = "many-to-many"
+  ) |>
+  distinct(Ensembl, Feature, .keep_all = TRUE) |>
+  filter(Feature %in% targets)
+
+# ==================================================
+# 3. VASCULATURE DATA
+# ==================================================
+
+cluster_df_vasculature <- single_cell_cluster_data_raw |>
+  filter(Tissue == "vasculature") |>
+  rename(Ensembl = Gene) |>
+  inner_join(combined_df, by = "Ensembl")
+
+# ==================================================
+# 4. MATRIX
+# ==================================================
+
+mat_vasculature <- cluster_df_vasculature |>
+  select(Feature, `Cell type`, nCPM) |>
+  group_by(Feature, `Cell type`) |>
+  summarise(nCPM = mean(nCPM, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = `Cell type`, values_from = nCPM, values_fill = 0) |>
+  column_to_rownames("Feature") |>
+  as.matrix()
+
+# ==================================================
+# 5. CLEAN MATRIX (CRITICAL)
+# ==================================================
+
+mat_vasculature_log <- log1p(mat_vasculature)
+
+# Remove Inf / NaN
+mat_vasculature_log[!is.finite(mat_vasculature_log)] <- NA
+
+# Remove rows with too many NA
+mat_vasculature_log <- mat_vasculature_log[
+  rowSums(is.na(mat_vasculature_log)) < ncol(mat_vasculature_log) * 0.5,
+]
+
+# Impute NA with row mean
+mat_vasculature_log <- t(apply(mat_vasculature_log, 1, function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+}))
+
+# Remove zero variance
+row_sd <- apply(mat_vasculature_log, 1, sd, na.rm = TRUE)
+mat_vasculature_log <- mat_vasculature_log[row_sd > 1e-6, ]
+
+cat("Vasculature matrix size:", dim(mat_vasculature_log), "\n")
+
+# ==================================================
+# 6. SPLIT UP / DOWN
+# ==================================================
+
+up_features <- res_cd4_baseline_immune |>
+  filter(adj.P.Val < 0.05, logFC > 0) |>
+  pull(Feature)
+
+down_features <- res_cd4_baseline_immune |>
+  filter(adj.P.Val < 0.05, logFC < 0) |>
+  pull(Feature)
+
+mat_up   <- mat_vasculature_log[rownames(mat_vasculature_log) %in% up_features, , drop = FALSE]
+mat_down <- mat_vasculature_log[rownames(mat_vasculature_log) %in% down_features, , drop = FALSE]
+
+# ==================================================
+# 7. PLOTS
+# ==================================================
+
+dir.create("../plots/pdf/cluster", recursive = TRUE, showWarnings = FALSE)
+dir.create("../plots/png/cluster", recursive = TRUE, showWarnings = FALSE)
+
+# --- ALL ---
+pdf("../plots/pdf/cluster/cd4_vasculature_all.pdf", width = 10, height = 12)
+
+pheatmap(
+  mat_vasculature_log,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  scale = "row",
+  fontsize_row = 8,
+  fontsize_col = 9,
+  color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main = "CD4 vasculature signature"
+)
+
+dev.off()
+
+# --- UP ---
+pdf("../plots/pdf/cluster/cd4_vasculature_up.pdf", width = 10, height = 10)
+
+pheatmap(
+  mat_up,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  scale = "row",
+  fontsize_row = 8,
+  fontsize_col = 8,
+  color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100)
+)
+
+dev.off()
+
+# --- DOWN ---
+if (nrow(mat_down) >= 2) {
+  pdf("../plots/pdf/cluster/cd4_vasculature_down.pdf", width = 10, height = 6)
+
+  pheatmap(
+    mat_down,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    scale = "row",
+    fontsize_row = 8,
+    fontsize_col = 8,
+    color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100)
+  )
+
+  dev.off()
+}
+```
+
+```{r}
+# ==================================================
+# BLOOD DATA
+# ==================================================
+
+cluster_df_blood <- single_cell_cluster_data_raw |>
+  filter(Tissue == "blood") |>
+  rename(Ensembl = Gene) |>
+  inner_join(combined_df, by = "Ensembl")
+
+# ==================================================
+# MATRIX
+# ==================================================
+
+mat_blood <- cluster_df_blood |>
+  select(Feature, `Cell type`, nCPM) |>
+  group_by(Feature, `Cell type`) |>
+  summarise(nCPM = mean(nCPM, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = `Cell type`, values_from = nCPM, values_fill = 0) |>
+  column_to_rownames("Feature") |>
+  as.matrix()
+
+# ==================================================
+# CLEAN MATRIX
+# ==================================================
+
+mat_blood_log <- log1p(mat_blood)
+
+mat_blood_log[!is.finite(mat_blood_log)] <- NA
+
+mat_blood_log <- mat_blood_log[
+  rowSums(is.na(mat_blood_log)) < ncol(mat_blood_log) * 0.5,
+]
+
+mat_blood_log <- t(apply(mat_blood_log, 1, function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+}))
+
+row_sd <- apply(mat_blood_log, 1, sd, na.rm = TRUE)
+mat_blood_log <- mat_blood_log[row_sd > 1e-6, ]
+
+cat("Blood matrix size:", dim(mat_blood_log), "\n")
+
+# ==================================================
+# SPLIT
+# ==================================================
+
+mat_up   <- mat_blood_log[rownames(mat_blood_log) %in% up_features, , drop = FALSE]
+mat_down <- mat_blood_log[rownames(mat_blood_log) %in% down_features, , drop = FALSE]
+
+# ==================================================
+# PLOTS
+# ==================================================
+
+# --- ALL ---
+pdf("../plots/pdf/cluster/cd4_blood_all.pdf", width = 10, height = 12)
+
+pheatmap(
+  mat_blood_log,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  scale = "row",
+  fontsize_row = 8,
+  fontsize_col = 9,
+  color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100),
+  main = "CD4 blood signature"
+)
+
+dev.off()
+
+# --- UP ---
+pdf("../plots/pdf/cluster/cd4_blood_up.pdf", width = 10, height = 10)
+
+pheatmap(
+  mat_up,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  scale = "row",
+  fontsize_row = 8,
+  fontsize_col = 8,
+  color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100)
+)
+
+dev.off()
+
+# --- DOWN ---
+if (nrow(mat_down) >= 2) {
+  pdf("../plots/pdf/cluster/cd4_blood_down.pdf", width = 10, height = 6)
+
+  pheatmap(
+    mat_down,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    scale = "row",
+    fontsize_row = 8,
+    fontsize_col = 8,
+    color = colorRampPalette(c("#2166AC", "white", "#B2182B"))(100)
+  )
+
+  dev.off()
+}
+```
+
 
 # SessionInfo
 
