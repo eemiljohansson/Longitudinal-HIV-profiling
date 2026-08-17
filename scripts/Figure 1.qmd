@@ -200,9 +200,6 @@ bar_sex
 ## Figure 1D
 
 ```{r}
-library(dplyr)
-library(ggplot2)
-
 # 1. Define category levels
 cd4cd8_levels <- c("Very low", "Low", "Normal")
 
@@ -454,7 +451,7 @@ p_rna
 ## Figure S1B
 
 ```{r}
----------------------------
+# ---------------------------
 # 1) Prepare data
 # ---------------------------
 df_cd4 <- metadata %>%
@@ -681,8 +678,6 @@ ggsave("../plots/png/boxplot/CD4_boxplots_with_lines_by_Subgroup.png", plot = p_
 ggsave("../plots/pdf/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.pdf", plot = p_ratio, width = 12, height = 4)
 ggsave("../plots/png/boxplot/CD4CD8_ratio_boxplots_with_lines_by_Subgroup.png", plot = p_ratio, width = 12, height = 4)
 ```
-
-# Save Tables
 
 # SessionInfo
 
